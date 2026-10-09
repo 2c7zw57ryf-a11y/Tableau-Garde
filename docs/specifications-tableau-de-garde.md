@@ -107,6 +107,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Positions 3+ : rotation équitable par blocs configurables; actuel DEUX blocs : 3-7 et 8-12+ (HB à part). Équité = nombre de passages par bloc, sur l'attribution initiale.
 - Hors ordre, en retrait : G1 N, post-garde, absents.
 - HB (hors bloc) : les N dernières positions; N par défaut réglable (1 actuellement) et ajustable jour par jour selon les salles disponibles.
+- Salles d'opération ouvertes (2026-10-09) : nombre réglé dans l'onglet Générateur (réglage `salles`, partagé). Quand il est réglé, les positions 1 à N ont une salle et toutes les suivantes sont HB automatiquement, calcul fait à l'affichage à partir de la longueur de l'ordre : respecté par le générateur, par l'ordre par défaut et par les modifications manuelles (ajout ou retrait d'une personne). Le HB par défaut (Outils) ne sert que si le nombre de salles n'est pas réglé. L'ajustement manuel du HB d'un jour reste possible (bouton ↺ pour revenir à l'automatique).
 - Ajustements manuels par date comptés dans l'équité de rotation; rejeu déterministe.
 
 ### 10. Contraintes issues de la gestion et des échanges

@@ -542,9 +542,9 @@ function rowsToD(r){
   const echanges=r.echanges.map(x=>x.data);
   const journal=r.journal.map(x=>({t:x.t,par:x.par||'—',txt:x.txt}));
   const regl={}; r.reglages.forEach(x=>regl[x.cle]=x.valeur);
-  return {membres:mem,gardes,choix,prov,vacances,feries,locks,echanges,journal,reglages:{delaiEncan:regl.delaiEncan??24,hbDefaut:regl.hbDefaut??1},blocs:regl.blocs||[7,12],capacites:regl.capacites||{},lastGen:regl.lastGen||null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}};
+  return {membres:mem,gardes,choix,prov,vacances,feries,locks,echanges,journal,reglages:{delaiEncan:regl.delaiEncan??24,hbDefaut:regl.hbDefaut??1,salles:regl.salles??null},blocs:regl.blocs||[7,12],capacites:regl.capacites||{},lastGen:regl.lastGen||null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}};
 }
-function snapFrom(d){ SNAP={vac:{},ech:{},locks:{...d.locks},regl:{blocs:JSON.stringify(d.blocs),hbDefaut:JSON.stringify(d.reglages.hbDefaut),delaiEncan:JSON.stringify(d.reglages.delaiEncan),capacites:JSON.stringify(d.capacites),lastGen:JSON.stringify(d.lastGen||null)}};
+function snapFrom(d){ SNAP={vac:{},ech:{},locks:{...d.locks},regl:{blocs:JSON.stringify(d.blocs),hbDefaut:JSON.stringify(d.reglages.hbDefaut),salles:JSON.stringify(d.reglages.salles??null),delaiEncan:JSON.stringify(d.reglages.delaiEncan),capacites:JSON.stringify(d.capacites),lastGen:JSON.stringify(d.lastGen||null)}};
   d.vacances.forEach(v=>{ v.id=v.id||uuid(); SNAP.vac[v.id]=JSON.stringify(v); }); d.echanges.forEach(e=>SNAP.ech[e.id]=JSON.stringify(e)); }
 async function chargerTout(){
   const q=async (t,sel,ord)=>{ let qq=sb.from(t).select(sel||'*'); if(ord) qq=qq.order(ord.col,{ascending:ord.asc!==false}); if(t==='journal') qq=qq.limit(300); const {data,error}=await qq; if(error) throw error; return data||[]; };
@@ -553,7 +553,7 @@ async function chargerTout(){
 }
 function appliquerD(nd){ for(const k of Object.keys(D)) delete D[k]; Object.assign(D,nd); rebuildM(); FERIES.clear(); D.feries.forEach(x=>FERIES.add(x)); snapFrom(D); if(typeof rebuildWho==='function') rebuildWho(); }
 const StoreOnline = {
-  load(){ return {membres:[],gardes:{},choix:{},prov:{},vacances:[],feries:[],locks:{},echanges:[],journal:[],reglages:{delaiEncan:24,hbDefaut:1},blocs:[7,12],capacites:{},lastGen:null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}}; },
+  load(){ return {membres:[],gardes:{},choix:{},prov:{},vacances:[],feries:[],locks:{},echanges:[],journal:[],reglages:{delaiEncan:24,hbDefaut:1,salles:null},blocs:[7,12],capacites:{},lastGen:null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}}; },
   reset(){ toast('Indisponible en ligne'); },
   async save(){ if(!sb) return;
     try{
@@ -572,7 +572,7 @@ const StoreOnline = {
       if(ladd.length){ const {error}=await sb.from('verrous').upsert(ladd.map(k=>({jour:k,par:me||null}))); if(error) throw error; }
       if(ldel.length){ const {error}=await sb.from('verrous').delete().in('jour',ldel); if(error) throw error; }
       // réglages
-      const regl={blocs:D.blocs,hbDefaut:D.reglages.hbDefaut,delaiEncan:D.reglages.delaiEncan,capacites:D.capacites,lastGen:D.lastGen||null};
+      const regl={blocs:D.blocs,hbDefaut:D.reglages.hbDefaut,salles:D.reglages.salles??null,delaiEncan:D.reglages.delaiEncan,capacites:D.capacites,lastGen:D.lastGen||null};
       const rups=[]; for(const k in regl){ const s=JSON.stringify(regl[k]); if(SNAP.regl[k]!==s) rups.push({cle:k,valeur:regl[k],maj:new Date().toISOString()}); }
       if(rups.length){ const {error}=await sb.from('reglages').upsert(rups); if(error) throw error; }
       snapFrom(D);
@@ -659,7 +659,9 @@ const posOK=ps=>F.salle && ps && (F.cmp==='lt'?ps<F.pos:ps>F.pos);
 const roleOK=r=>r && F[r];
 try{ Object.assign(F, JSON.parse(localStorage.getItem('tg.f')||'{}')); }catch(e){}
 const saveF=()=>{ try{localStorage.setItem('tg.f',JSON.stringify(F));}catch(e){} };
-const hbDe=c=>(c && c.hb!==undefined && c.hb!==null) ? c.hb : ((D.reglages&&D.reglages.hbDefaut!==undefined)?D.reglages.hbDefaut:1);
+const sallesDe=()=>(D.reglages&&D.reglages.salles>0)?+D.reglages.salles:0;   // salles d'opération ouvertes (0 = non réglé)
+const hbAuto=c=> sallesDe() ? Math.max(0,(c&&c.ordre?c.ordre.length:0)-sallesDe()) : ((D.reglages&&D.reglages.hbDefaut!==undefined)?D.reglages.hbDefaut:1);
+const hbDe=c=>(c && c.hb!==undefined && c.hb!==null) ? c.hb : hbAuto(c);
 const isHB=(i,n,hb)=> i>=n-hb;   // i = index 0-based, n = longueur, hb = nb de HB
 const posLabel=(pos,n,hb)=> isHB(pos-1,n,hb===undefined?1:hb) ? 'HB' : (pos===1?'1er':pos+'e');
 function posDe(k,id){ const c=D.choix[k]; if(!c||!id) return 0; const i=c.ordre.indexOf(id); return i<0?0:i+1; }
@@ -830,7 +832,7 @@ function renderMoi(){
 // =====================================================================
 // ÉCHANGES DE GARDES
 // =====================================================================
-D.echanges = D.echanges||[]; D.reglages = D.reglages||{delaiEncan:24}; if(D.reglages.hbDefaut===undefined) D.reglages.hbDefaut=1; D.prov = D.prov||{};
+D.echanges = D.echanges||[]; D.reglages = D.reglages||{delaiEncan:24}; if(D.reglages.hbDefaut===undefined) D.reglages.hbDefaut=1; if(D.reglages.salles===undefined) D.reglages.salles=null; D.prov = D.prov||{};
 const now=()=>new Date();
 const ROLE_LBL={g1:'G1 24 h',g1j:'G1 J',g1n:'G1 N',g2:'G2'};
 // place d'un membre un jour donné
@@ -1208,7 +1210,7 @@ function ordreHtml(k){
     const hors=actifs().map(m=>m.id).filter(id=>!c.ordre.includes(id));
     h+=`<div class="hors">${c.nuit?`Nuit : <b>${ini(c.nuit)}</b> · `:''}${c.postGarde.length?`Post-garde : <b>${c.postGarde.map(ini).join(', ')}</b> · `:''}${c.absents.length?`Absents : ${c.absents.map(ini).join(', ')}`:''}
       ${hors.length?`<div style="margin-top:6px">Ajouter : <select data-o="addsel"><option value="">—</option>${hors.map(id=>`<option value="${id}">${ini(id)}</option>`).join('')}</select></div>`:''}</div>
-      <div class="hbctl"><span>Hors bloc (HB)</span><button class="btn sm" data-o="hbm" ${hbDe(c)<=0?'disabled':''}>−</button><b>${hbDe(c)}</b><button class="btn sm" data-o="hbp" ${hbDe(c)>=Math.max(0,c.ordre.length-2)?'disabled':''}>+</button>${c.hb!==undefined&&c.hb!==null&&c.hb!==D.reglages.hbDefaut?`<button class="btn sm" data-o="hbd" title="Revenir à la valeur par défaut (${D.reglages.hbDefaut})">↺</button>`:''}</div>
+      <div class="hbctl"><span>Hors bloc (HB)</span><button class="btn sm" data-o="hbm" ${hbDe(c)<=0?'disabled':''}>−</button><b>${hbDe(c)}</b><button class="btn sm" data-o="hbp" ${hbDe(c)>=Math.max(0,c.ordre.length-2)?'disabled':''}>+</button>${c.hb!==undefined&&c.hb!==null&&c.hb!==hbAuto(c)?`<button class="btn sm" data-o="hbd" title="Revenir à la valeur automatique (${hbAuto(c)}${sallesDe()?', '+sallesDe()+' salles':''})">↺</button>`:''}</div>
       <div class="actions"><button class="btn sm" data-o="auto">Recalculer</button><button class="btn sm" data-o="clear">Effacer l'ordre</button></div>`;
   }
   return h+`</div>`;
@@ -1222,7 +1224,7 @@ function bindOrdre(ed,k){
     if(a==='rm'){ const id=c.ordre.splice(i,1)[0]; return setC(c,`${ini(id)} retiré`); }
     if(a==='hbm'){ c.hb=Math.max(0,hbDe(c)-1); return setC(c,`${c.hb} HB`); }
     if(a==='hbp'){ c.hb=hbDe(c)+1; return setC(c,`${c.hb} HB`); }
-    if(a==='hbd'){ delete c.hb; return setC(c,`HB par défaut (${D.reglages.hbDefaut})`); }
+    if(a==='hbd'){ delete c.hb; return setC(c,`HB automatique (${hbAuto(c)})`); }
   });
   const ol=ed.querySelector('.ol'); if(ol) bindDrag(ol, order=>{ const c=JSON.parse(JSON.stringify(D.choix[k])); const full=[...c.ordre.slice(0,2),...order]; if(full.join()!==c.ordre.join()){ c.ordre=full; setC(c,'réordonné par glisser-déposer'); } });
   const sel=ed.querySelector('[data-o=addsel]'); if(sel) sel.onchange=()=>{ if(!sel.value) return; const c=JSON.parse(JSON.stringify(D.choix[k])); c.ordre.push(sel.value); setC(c,`${ini(sel.value)} ajouté en ${c.ordre.length}e`); };
@@ -1389,7 +1391,7 @@ function gestJournal(box){
 function gestOutils(box){
   box.innerHTML=`<div class="tools">
     <div class="card"><b>Blocs de l'ordre de choix</b><p>Dernière position de chaque bloc (positions 1-2 = gardes). Actuel : ${D.blocs.join(' / ')}.</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="tBlocs" value="${D.blocs.join(', ')}" style="border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px;width:160px"><button class="btn" id="tBlocsSave">Enregistrer</button></div></div>
-    <div class="card"><b>Hors bloc (HB) par défaut</b><p>Nombre de personnes en fin d'ordre qui n'ont pas de salle (hors bloc), un jour normal. Se règle aussi jour par jour dans l'onglet Horaire. Actuel : ${D.reglages.hbDefaut}.</p><div style="display:flex;gap:8px;align-items:center"><select id="tHb" style="border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px">${[0,1,2,3,4].map(x=>`<option value="${x}"${D.reglages.hbDefaut===x?' selected':''}>${x}</option>`).join('')}</select><button class="btn" id="tHbSave">Enregistrer</button></div></div>
+    <div class="card"><b>Hors bloc (HB) par défaut</b><p>Nombre de personnes en fin d'ordre qui n'ont pas de salle (hors bloc), un jour normal. Se règle aussi jour par jour dans l'onglet Horaire. Actuel : ${D.reglages.hbDefaut}.${sallesDe()?` <b>Sans effet tant que le nombre de salles d'opération ouvertes (${sallesDe()}, onglet Générateur) est réglé : le HB est alors calculé automatiquement.</b>`:''}</p><div style="display:flex;gap:8px;align-items:center"><select id="tHb" style="border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px">${[0,1,2,3,4].map(x=>`<option value="${x}"${D.reglages.hbDefaut===x?' selected':''}>${x}</option>`).join('')}</select><button class="btn" id="tHbSave">Enregistrer</button></div></div>
     <div class="card"><b>Délai des encans</b><p>Temps laissé aux membres pour appliquer sur une garde mise à l'encan. S'applique aux encans ouverts après le changement. Actuel : ${D.reglages.delaiEncan} h.</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="tDelai" style="border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px">${[6,12,24,48,72,96].map(x=>`<option value="${x}"${D.reglages.delaiEncan===x?' selected':''}>${x} h</option>`).join('')}</select><button class="btn" id="tDelaiSave">Enregistrer</button></div></div>
     <div class="card"><b>${ONLINE?'Données':'Données de la maquette'}</b><p>${ONLINE?'Les données sont partagées en direct entre tous les membres (Supabase).':'Les modifications faites ici sont conservées sur cet appareil seulement.'}</p><div class="actions" style="justify-content:flex-start"><button class="btn" id="tExport">Exporter (JSON)</button>${ONLINE?'':'<button class="btn danger" id="tReset">Revenir aux données de démonstration</button>'}</div></div>
   </div>`;
@@ -1644,7 +1646,7 @@ function genererSalles(G, ctx){
     rest.sort((a,b)=> (passes[a].b1-passes[b].b1) || (passes[a].lastB1<passes[b].lastB1?-1:passes[a].lastB1>passes[b].lastB1?1:0) || (passes[a].lastPos-passes[b].lastPos) );
     const ordre=[...top,...rest];
     ordre.forEach((id,i)=>{ if(i<2) return; const pos=i+1; if(pos<=b1Max){ passes[id].b1++; passes[id].lastB1=k; } else passes[id].b2++; passes[id].lastPos=pos; });
-    const prev=D.choix[k]; out[k]={ordre, nuit:g.g1n||null, postGarde:post.sort(), absents:ids.filter(id=>enVac(id,k)), ...(prev&&prev.hb!==undefined?{hb:prev.hb}:{})};
+    const prev=D.choix[k]; out[k]={ordre, nuit:g.g1n||null, postGarde:post.sort(), absents:ids.filter(id=>enVac(id,k)), ...(!sallesDe()&&prev&&prev.hb!==undefined?{hb:prev.hb}:{})};
   });
   return out;
 }
@@ -1668,6 +1670,7 @@ function gestGenerateur(box){
         <label class="chk"><input type="checkbox" id="eFds" ${gen.etapes.fds?'checked':''}> Fins de semaine</label>
         <label class="chk"><input type="checkbox" id="eSem" ${gen.etapes.sem?'checked':''}> Semaine (lun-jeu et vendredis détachés)</label>
         <label class="chk"><input type="checkbox" id="eSal" ${gen.etapes.salles?'checked':''}> Ordre de choix de salle</label></div>
+      <div class="step"><label>Salles d'opération ouvertes</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="number" id="gSalles" min="1" max="40" step="1" value="${sallesDe()||''}" placeholder="non réglé" style="width:110px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px;font-size:15px"><span class="meta" style="margin:0">${sallesDe()?`Positions 1 à ${sallesDe()} avec salle; au-delà, hors bloc (HB) automatiquement.`:`Non réglé : ${D.reglages.hbDefaut} HB par défaut (Outils).`}</span></div></div>
       <div class="step"><label class="chk"><input type="checkbox" id="ePasse" ${gen.passe?'checked':''}> Inclure les jours passés (test de la maquette seulement)</label></div>
       <div class="step"><label>Graine (facultatif, pour rejouer une génération)</label><input type="text" id="gSeed" value="${gen.seed}" placeholder="aléatoire" style="max-width:160px"></div>
       <div class="meta">Le passé, les fériés, les semaines non cochées et les jours verrouillés (🔒) ne sont jamais modifiés. Budget : 60 s maximum, arrêt automatique après 30 essais sans amélioration.</div>
@@ -1683,6 +1686,7 @@ function gestGenerateur(box){
   box.querySelectorAll('.wk[data-w]').forEach(b=>b.onclick=()=>{ const w=b.dataset.w; gen.weeks.has(w)?gen.weeks.delete(w):gen.weeks.add(w); b.setAttribute('aria-pressed',gen.weeks.has(w)); });
   ['eFds','eSem','eSal'].forEach((id,i)=>document.getElementById(id).onchange=e=>{ gen.etapes[['fds','sem','salles'][i]]=e.target.checked; });
   document.getElementById('gSeed').onchange=e=>gen.seed=e.target.value.trim();
+  document.getElementById('gSalles').onchange=e=>{ const v=Math.max(0,Math.floor(+e.target.value||0)); D.reglages.salles=v||null; Store.save(); Store.log(v?`Salles d'opération ouvertes : ${v}`:'Salles d\'opération : réglage retiré'); toast(v?`${v} salles ouvertes`:'Réglage retiré'); renderGest(); };
   document.getElementById('ePasse').onchange=e=>{ gen.passe=e.target.checked; gen.weeks=new Set(semainesDe(gen.trim).filter(mk=>addDays(parse(mk),6)>genCut())); gen.result=null; gen.pending=null; renderGest(); };
   document.getElementById('gRun').onclick=()=>{ gen.full=false; lancerGeneration(); };
   document.getElementById('gRunFull').onclick=()=>{ gen.full=true; lancerGeneration(); };
