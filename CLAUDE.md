@@ -33,8 +33,8 @@ Langue de l'interface et du code (commentaires, noms) : français québécois. T
 - Vendredi séparé (`venSep`) : le vendredi est détaché de la FDS de la personne (FDS = sam-dim).
 - Équité par trimestre sur l'attribution initiale (échanges sans effet) ; solde reporté au trimestre suivant.
 - Règles dures : pas 2 FDS consécutives, pas de nuit le lundi au retour de vacances, jamais en garde en vacances.
-- Règles souples par ordre : équité G1/G2 > max 1 FDS/mois > pas de garde de semaine autour de sa FDS >
-  répartition lun-ven > jeudi avant vacances.
+- Règles souples par ordre : équité des G1/G2 de FDS > équité G1/G2 totale > max 1 FDS/mois > pas de garde de semaine
+  autour de sa FDS > vendredis > répartition lun-ven > jeudi avant vacances > jours/nuits (poids `W` dans index.html).
 - Ordre de choix de salle : positions 1-2 = G1 jour, G2 ; blocs 3-7 et 8-12+ ; HB (hors bloc) = N dernières positions.
 - Fériés et semaines des Fêtes : saisie manuelle par le coordonnateur (le générateur les saute).
 

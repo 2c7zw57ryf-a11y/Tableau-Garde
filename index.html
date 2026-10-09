@@ -1465,7 +1465,8 @@ function soldesPrecedents(trimId, ids){ const p=trimPrecedent(trimId); const s={
   for(const x of ['g1','g2','ven']){ const mean=ids.reduce((a,id)=>a+c[id][x],0)/n; ids.forEach(id=>{ s[id][x]=Math.max(-1,Math.min(1,c[id][x]-mean)); }); } return s; }
 
 // ---- score global (plus petit = meilleur)
-const W={g1:100,g2:100,fg1:40,fg2:40,fdsMois:30,adj:10,jn:5,dow:3,jeudi:2,ven:20,g2next:1,trou:1000};
+// hiérarchie : équité des G1/G2 de fin de semaine (fg1, fg2) > équité des totaux G1/G2 (la semaine compense) > 1 FDS par mois > adjacence > vendredis > lun-ven > jour/nuit
+const W={fg1:130,fg2:130,g1:100,g2:100,fdsMois:30,adj:10,jn:5,dow:3,jeudi:2,ven:20,g2next:1,trou:1000};
 const fdsG1=c=>c.f24+0.5*(c.fj+c.fn);   // charge G1 de fin de semaine (samedi-dimanche)
 function variance(arr){ const n=arr.length; if(!n) return 0; const m=arr.reduce((a,b)=>a+b,0)/n; return arr.reduce((a,b)=>a+(b-m)*(b-m),0)/n; }
 function scoreDe(gardes, ctx){

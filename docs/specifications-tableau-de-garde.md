@@ -34,7 +34,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 4. Pas de nuit de garde le lundi en revenant de vacances (dur).
 5. Idéalement, même nombre de lundis/…/vendredis de garde par membre (souple, rang 4).
 6. Jeudi privilégié pour qui part en vacances la semaine suivante (souple, rang 5).
-7. Hiérarchie des règles souples : 1) équité G1/G2 du trimestre > 2) max 1 FDS/mois > 3) pas de garde de semaine autour de sa FDS > 4) répartition lun-ven > 5) jeudi avant vacances.
+7. Hiérarchie des règles souples (révisée 2026-10-09) : 1) équité des G1 et des G2 de fin de semaine > 2) équité G1/G2 du trimestre (totaux, la semaine compense) > 3) max 1 FDS/mois > 4) pas de garde de semaine autour de sa FDS > 5) équité des vendredis > 6) répartition lun-ven > 7) jeudi avant vacances > 8) équilibre jours/nuits (le moins contraignant).
 
 ## Fonctionnalités v10 (publiée 2026-09-03)
 - Génération en trois temps (gloutonne trimestrielle G1/G2 → optimisation par réassignations → 6 essais, meilleur retenu), par trimestre, rapport détaillé (trous nommés, renforts, dépassements R2, réassignations).
@@ -87,7 +87,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Par trimestre, sur G1 et G2 : jour = ½, nuit = ½, 24 h = 1, G2 = 1, renfort = ½ G1. Trimestre d'une garde = celui du lundi de sa semaine.
 - Vacances : aucune réduction de la part (gardes concentrées dans les semaines de présence).
 - Échanges et dons : aucun effet sur le compte officiel (attribution initiale).
-- Fins de semaine (2026-10-09) : viser aussi le même FDS G1 (charge G1 du samedi-dimanche : 24 h = 1, J ou N = ½) et le même FDS G2 (nombre de G2 du samedi-dimanche) pour tous les membres. Règle souple intégrée au score du générateur, sous l'équité G1/G2 totale. Dans un trio, le membre le plus avancé en G2 de FDS prend le rôle sans G2 (jour + nuit); le recuit peut permuter les rôles d'un trio. Le rapport de génération affiche FDS G1 et FDS G2 avec l'écart à la moyenne.
+- Fins de semaine (2026-10-09) : viser aussi le même FDS G1 (charge G1 du samedi-dimanche : 24 h = 1, J ou N = ½) et le même FDS G2 (nombre de G2 du samedi-dimanche) pour tous les membres. Règle souple intégrée au score du générateur, AU-DESSUS de l'équité des totaux G1/G2 (décision du 2026-10-09) : si les fins de semaine ne peuvent pas être parfaitement égales, le générateur compense par les gardes de semaine, jamais l'inverse. Dans un trio, le membre le plus avancé en G2 de FDS prend le rôle sans G2 (jour + nuit); le recuit peut permuter les rôles d'un trio. Le rapport de génération affiche FDS G1 et FDS G2 avec l'écart à la moyenne.
 - Jours et nuits (2026-10-09) : pour un membre qui fractionne, viser autant de jours que de nuits. Règle souple de faible poids, volontairement la moins contraignante du score (un écart de 1 n'est pas pénalisé); léger biais à la construction. Le rapport affiche J / N avec l'écart Δ (vert jusqu'à 1, orange à 2, rouge à partir de 3).
 - Idée en attente : nouveau membre ou membre de retour entre au niveau du groupe, sans iniquité à rattraper.
 - Idée en attente : un membre peut se déclarer prêt à 1 ou 2 gardes dans l'autre mode que sa préférence (24 h → quelques J/N, ou l'inverse).
