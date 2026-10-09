@@ -88,6 +88,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Vacances : aucune réduction de la part (gardes concentrées dans les semaines de présence).
 - Échanges et dons : aucun effet sur le compte officiel (attribution initiale).
 - Fins de semaine (2026-10-09) : viser aussi le même FDS G1 (charge G1 du samedi-dimanche : 24 h = 1, J ou N = ½) et le même FDS G2 (nombre de G2 du samedi-dimanche) pour tous les membres. Règle souple intégrée au score du générateur, sous l'équité G1/G2 totale. Dans un trio, le membre le plus avancé en G2 de FDS prend le rôle sans G2 (jour + nuit); le recuit peut permuter les rôles d'un trio. Le rapport de génération affiche FDS G1 et FDS G2 avec l'écart à la moyenne.
+- Jours et nuits (2026-10-09) : pour un membre qui fractionne, viser autant de jours que de nuits. Règle souple de faible poids, volontairement la moins contraignante du score (un écart de 1 n'est pas pénalisé); léger biais à la construction. Le rapport affiche J / N avec l'écart Δ (vert jusqu'à 1, orange à 2, rouge à partir de 3).
 - Idée en attente : nouveau membre ou membre de retour entre au niveau du groupe, sans iniquité à rattraper.
 - Idée en attente : un membre peut se déclarer prêt à 1 ou 2 gardes dans l'autre mode que sa préférence (24 h → quelques J/N, ou l'inverse).
 
