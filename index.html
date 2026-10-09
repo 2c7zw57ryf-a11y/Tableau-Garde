@@ -1465,12 +1465,15 @@ function soldesPrecedents(trimId, ids){ const p=trimPrecedent(trimId); const s={
   for(const x of ['g1','g2','ven']){ const mean=ids.reduce((a,id)=>a+c[id][x],0)/n; ids.forEach(id=>{ s[id][x]=Math.max(-1,Math.min(1,c[id][x]-mean)); }); } return s; }
 
 // ---- score global (plus petit = meilleur)
-const W={g1:100,g2:100,fdsMois:30,adj:10,dow:3,jeudi:2,ven:20,g2next:1,trou:1000};
+const W={g1:100,g2:100,fg1:40,fg2:40,fdsMois:30,adj:10,dow:3,jeudi:2,ven:20,g2next:1,trou:1000};
+const fdsG1=c=>c.f24+0.5*(c.fj+c.fn);   // charge G1 de fin de semaine (samedi-dimanche)
 function variance(arr){ const n=arr.length; if(!n) return 0; const m=arr.reduce((a,b)=>a+b,0)/n; return arr.reduce((a,b)=>a+(b-m)*(b-m),0)/n; }
 function scoreDe(gardes, ctx){
   const c=compteurs(gardes, ctx.mondays, ctx.ids); let s=0;
   s+=W.g1*variance(ctx.ids.map(id=>c[id].g1+ctx.soldes[id].g1));
   s+=W.g2*variance(ctx.ids.map(id=>c[id].g2+ctx.soldes[id].g2));
+  s+=W.fg1*variance(ctx.ids.map(id=>fdsG1(c[id])));
+  s+=W.fg2*variance(ctx.ids.map(id=>c[id].fg2));
   s+=W.ven*variance(ctx.ids.map(id=>c[id].ven+ctx.soldes[id].ven));
   ctx.ids.forEach(id=>{ for(const mo in c[id].fdsMois) if(c[id].fdsMois[mo]>1) s+=W.fdsMois*(c[id].fdsMois[mo]-1); s+=W.dow*variance(c[id].dow.slice(1,6)); });
   // adjacence : garde lun-jeu la semaine de sa FDS ou la semaine suivante
@@ -1530,7 +1533,9 @@ function genererEssai(ctx, seed){
       if(!team){ trous.push(`FDS du ${fmtLong(fri)} : aucune équipe admissible`); return; }
       const venSep=team.some(id=>mem(id).venSep);
       genDays.add(kF); genDays.add(kS); genDays.add(kD);
-      if(trio){ const [A,B,C]=team;
+      if(trio){ // rôles : X,Y,Z triés par (G2 de FDS − G1 de FDS) croissant; Z, le plus avancé en G2, prend le rôle sans G2
+        const wg=id=>c[id].fg2-fdsG1(c[id]); const [X,Y,Z]=[...team].sort((a,b)=>wg(a)-wg(b)||cost(a)-cost(b));
+        const A=venSep?Z:X, B=venSep?X:Y, C=venSep?Y:Z;
         if(venSep){ detaches.add(kF); G[kS]={g1j:A,g1n:B,g2:C}; G[kD]={g1j:C,g1n:A,g2:B}; }
         else { G[kF]={g1j:A,g1n:B,g2:C}; G[kS]={g1j:C,g1n:A,g2:B}; G[kD]={g1j:B,g1n:C,g2:A}; }
         trioSoFar++;
@@ -1609,6 +1614,18 @@ function ameliorer(G, ctx2, R, days, moves, T){
       let ok=true; [...ka,...kb].forEach(k=>{ const g=G[k]; if(!g) return; const isFri=k===ka[0]||k===kb[0]; const teamDay=roleKeys.some(r=>g[r] && (teamA.includes(g[r])||teamB.includes(g[r]))); if(isFri && !teamDay) return; const ng={}; roleKeys.forEach(r=>{ if(g[r]) ng[r]=map[g[r]]||g[r]; }); G[k]=ng; });
       [...ka,...kb].forEach(k=>{ if(!jourValide(G,k)) ok=false; });
       teamA.forEach(id=>{ if(fdsProche(G,map[id]===id?id:id,fb)) ok=false; }); teamB.forEach(id=>{ if(fdsProche(G,id,fa)) ok=false; });
+      if(ok){ const ns=scoreDe(G,ctx2); if(!accept(ns)) ok=false; }
+      if(!ok) for(const k in saved){ if(saved[k]) G[k]=saved[k]; else delete G[k]; }
+      continue;
+    }
+    if(u<0.18 && wkends.length){ // rotation des rôles dans un trio de FDS (équité des G1/G2 de FDS)
+      const a=wkends[Math.floor(R()*wkends.length)]; const fa=addDays(parse(a),4); const ka=[0,1,2].map(i=>key(addDays(fa,i)));
+      const ta=G[ka[1]]; if(!ta||!ta.g1j) continue;
+      const team=[...new Set([ka[1],ka[2]].flatMap(k=>roleKeys.map(r=>G[k]&&G[k][r]).filter(Boolean)))]; if(team.length!==3) continue;
+      const rot=R()<0.5?[1,2,0]:[2,0,1]; const map={}; team.forEach((id,i)=>map[id]=team[rot[i]]);
+      const saved={}; ka.forEach(k=>{ saved[k]=G[k]?{...G[k]}:null; });
+      let ok=true; ka.forEach(k=>{ const g=G[k]; if(!g) return; const teamDay=roleKeys.some(r=>g[r]&&team.includes(g[r])); if(k===ka[0]&&!teamDay) return; const ng={}; roleKeys.forEach(r=>{ if(g[r]) ng[r]=map[g[r]]||g[r]; }); G[k]=ng; });
+      ka.forEach(k=>{ if(!jourValide(G,k)) ok=false; });
       if(ok){ const ns=scoreDe(G,ctx2); if(!accept(ns)) ok=false; }
       if(!ok) for(const k in saved){ if(saved[k]) G[k]=saved[k]; else delete G[k]; }
       continue;
@@ -1793,28 +1810,30 @@ function annulerGeneration(){
 function statTableHtml(r){
   const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
   const rows=[...r.stats].map(s=>({...s, f24:s.f24||0, fj:s.fj||0, fn:s.fn||0, fg2:s.fg2||0, fch:s.fch||0, fer:s.fer||0,
-    sg1:Math.round((s.g1-((s.f24||0)+0.5*((s.fj||0)+(s.fn||0))))*10)/10, sg2:Math.round((s.g2-(s.fg2||0))*10)/10, m:D.membres.find(x=>x.ini===s.ini)||{}}))
+    fg1:Math.round(((s.f24||0)+0.5*((s.fj||0)+(s.fn||0)))*10)/10, sg1:Math.round((s.g1-((s.f24||0)+0.5*((s.fj||0)+(s.fn||0))))*10)/10, sg2:Math.round((s.g2-(s.fg2||0))*10)/10, m:D.membres.find(x=>x.ini===s.ini)||{}}))
     .filter(s=>!gen.filtre || (gen.filtre==='24h'&&s.m.mode==='24h') || (gen.filtre==='12h'&&s.m.mode==='12h') || (gen.filtre==='paire'&&s.m.modeFds==='24h') || (gen.filtre==='trio'&&s.m.modeFds==='12h') || (gen.filtre==='ven'&&s.m.venSep));
-  const mg1=mean(rows.map(s=>s.g1)), mg2=mean(rows.map(s=>s.g2));
+  const mg1=mean(rows.map(s=>s.g1)), mg2=mean(rows.map(s=>s.g2)), mf1=mean(rows.map(s=>s.fg1)), mf2=mean(rows.map(s=>s.fg2));
   const moy=k=>mean(rows.map(s=>s[k]));
   const fmt=x=>Number.isInteger(x)?String(x):(Math.round(x*10)/10).toFixed(1).replace('.',',');
-  const dev=(v,m)=>{ const e=Math.round((v-m)*10)/10, a=Math.abs(e); const cl=a>=1?'hi':(a>=0.5?'mid':'ok'); return `<span class="dev ${cl}">${e>0?'+':(e<0?'−':'')}${fmt(a)}</span>`; };
+  const dev=(v,m)=>{ const e=Math.round((v-m)*10)/10, a=Math.abs(e); const cl=a>=1?'hi':(a>=0.5?'mid':'ok'); return `<span class="dev ${cl}">${e>0?'+':(e<0?'−':'±')}${fmt(a)}</span>`; };
   const det=gen.details;
   const cols=[ // [clé, libellé, détail?, séparateur à gauche?]
     ['g1','G1',false,true],['g2','G2'],['j','G1 J',true],['n','G1 N',true],
-    ['fds','Nb FDS',false,true],['fch','Charge'],['f24','24 h',true],['fj','J',true],['fn','N',true],['fg2','G2',true],
+    ['fds','Nb FDS',false,true],['fg1','FDS G1'],['fg2','FDS G2'],['f24','24 h',true],['fj','J',true],['fn','N',true],['fch','Charge',true],
     ['ven','Ven.',false,true],['fer','Fériés'],['sg1','Sem. G1',true],['sg2','Sem. G2',true],['dow','L M M J V',true]
   ].filter(c=>det||!c[2]);
   const grp=det
-    ? [['Membre',1],['Équité du trimestre',2],['dont',2],['Fins de semaine',2],['dont',4],['Semaine',2],['dont',3]]
-    : [['Membre',1],['Équité du trimestre',2],['Fins de semaine',2],['Semaine',2]];
+    ? [['Membre',1],['Équité du trimestre',2],['dont',2],['Fins de semaine',3],['dont',4],['Semaine',2],['dont',3]]
+    : [['Membre',1],['Équité du trimestre',2],['Fins de semaine',3],['Semaine',2]];
   const th=c=>{ const [k,l,d,sep]=c; const sortable=k!=='dow'; return `<th class="${sortable?'sortable ':''}n${sep?' sep':''}${gen.sort.k===k?' on':''}" ${sortable?`data-sort="${k}"`:''}>${l}${gen.sort.k===k?(gen.sort.d>0?' ▲':' ▼'):''}</th>`; };
   rows.sort((a,b)=>{ const k=gen.sort.k, d=gen.sort.d; const va=a[k], vb=b[k]; if(va<vb) return -d; if(va>vb) return d; return a.ini.localeCompare(b.ini,'fr'); });
   const td=(s,c)=>{ const [k,,,sep]=c; const cls=`n${sep?' sep':''}`;
     if(k==='dow') return `<td class="${cls}" style="font-variant-numeric:tabular-nums;color:var(--muted)">${s.dow.join(' ')}</td>`;
     if(k==='g1') return `<td class="${cls}">${fmt(s.g1)}${dev(s.g1,mg1)}</td>`;
     if(k==='g2') return `<td class="${cls}">${fmt(s.g2)}${dev(s.g2,mg2)}</td>`;
-    return `<td class="${cls}">${k==='fch'?'<b>'+fmt(s[k])+'</b>':fmt(s[k])}</td>`; };
+    if(k==='fg1') return `<td class="${cls}">${fmt(s.fg1)}${dev(s.fg1,mf1)}</td>`;
+    if(k==='fg2') return `<td class="${cls}">${fmt(s.fg2)}${dev(s.fg2,mf2)}</td>`;
+    return `<td class="${cls}">${fmt(s[k])}</td>`; };
   const prof=m=>`<span class="tag ${m.mode==='12h'?'t12':'t24'}">${m.mode==='12h'?'12 h':'24 h'}</span><span class="tag ${m.modeFds==='12h'?'t12':'t24'}">${m.modeFds==='12h'?'trio':'paire'}</span>${m.venSep?'<span class="tag resp">ven. sép.</span>':''}`;
   return `<div class="gctl"><button class="btn sm" id="gDet">${det?'Masquer les détails':'Afficher les détails'}</button>
       <select id="gFil"><option value="">Tous les membres</option><option value="24h"${gen.filtre==='24h'?' selected':''}>Semaine 24 h</option><option value="12h"${gen.filtre==='12h'?' selected':''}>Semaine 12 h</option><option value="paire"${gen.filtre==='paire'?' selected':''}>FDS en paire (24 h)</option><option value="trio"${gen.filtre==='trio'?' selected':''}>FDS en trio (12 h)</option><option value="ven"${gen.filtre==='ven'?' selected':''}>Vendredi séparé</option></select>
@@ -1825,7 +1844,7 @@ function statTableHtml(r){
     ${rows.map(s=>`<tr><td class="ini"><b>${s.ini}</b><br>${prof(s.m)}</td>${cols.map(c=>td(s,c)).join('')}</tr>`).join('')}
     <tr class="moy"><td>Moyenne</td>${cols.map(c=>{ const [k,,,sep]=c; return `<td class="n${sep?' sep':''}">${k==='dow'?'':fmt(moy(k))}</td>`; }).join('')}</tr>
     </tbody></table></div>
-    <div class="meta">Compteurs du trimestre, solde du trimestre précédent inclus (plafonné à ±1). Barème : G1 24 h = 1 (compte pour 1 G1 J + 1 G1 N), G1 J ou N = ½, G2 = 1. Charge FDS (samedi et dimanche seulement) : G1 24 h = 1, G1 J ou N = ½, G2 = 1; une FDS complète pèse 4, soit 2 par membre en paire et 1,5 / 1,5 / 1 en trio. Nb FDS = présence (règles « pas deux FDS consécutives » et « max 1 par mois »). Sem. G1 / Sem. G2 = totaux moins samedi-dimanche (vendredi inclus dans la semaine).</div>`;
+    <div class="meta">Compteurs du trimestre, solde du trimestre précédent inclus (plafonné à ±1). Barème : G1 24 h = 1 (compte pour 1 G1 J + 1 G1 N), G1 J ou N = ½, G2 = 1. FDS G1 = charge G1 du samedi et du dimanche (24 h = 1, J ou N = ½); FDS G2 = nombre de G2 du samedi et du dimanche; le générateur vise le même FDS G1 et le même FDS G2 pour tous. Charge = FDS G1 + FDS G2; une FDS complète pèse 4, soit 2 par membre en paire et 1,5 / 1,5 / 1 en trio. Nb FDS = présence (règles « pas deux FDS consécutives » et « max 1 par mois »). Sem. G1 / Sem. G2 = totaux moins samedi-dimanche (vendredi inclus dans la semaine).</div>`;
 }
 function rapportHtml(r){
   const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0; const mg1=mean(r.stats.map(s=>s.g1)), mg2=mean(r.stats.map(s=>s.g2));
