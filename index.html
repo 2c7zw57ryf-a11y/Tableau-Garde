@@ -406,7 +406,19 @@ main{padding:14px;max-width:1500px;margin:0 auto}
 .pbar i{display:block;height:100%;background:var(--g1)}
 .rap h2{font-size:16px;margin:0 0 8px;display:flex;flex-direction:column;gap:2px}
 .rap h2 small{color:var(--muted);font-weight:400;font-size:13px}
-.rap .dev{color:var(--g2-ink);font-size:12px}
+.rap .dev{display:inline-block;min-width:36px;text-align:center;font-size:12px;padding:1px 5px;border-radius:var(--r-sm);margin-left:4px;font-variant-numeric:tabular-nums}
+.rap .dev.ok{background:var(--g1-soft);color:var(--g1-ink)}
+.rap .dev.mid{background:var(--g2-soft);color:var(--g2-ink)}
+.rap .dev.hi{background:#fde2e1;color:#8f1d18}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .rap .dev.hi{background:#5a1f1f;color:#ffb3b3} }
+:root[data-theme="dark"] .rap .dev.hi{background:#5a1f1f;color:#ffb3b3}
+.rap th.grp{text-align:center;color:var(--muted);font-size:12px;border-bottom:0;padding-bottom:0}
+.rap .stat th.grp.sep,.rap .stat td.sep,.rap .stat th.sep{border-left:1px solid var(--line)}
+.rap .stat td.ini .tag{margin-right:3px;font-size:11px;padding:0 6px}
+.rap .stat tr.moy td{color:var(--muted);border-top:1px solid var(--line)}
+.rap .stat{max-width:none}
+.rap .gctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.rap .gctl select{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:5px 8px;font-size:13px}
 .btn.lock.on{background:var(--g2-soft);border-color:var(--g2)}
 .chg-day .day{border-color:var(--g2);box-shadow:inset 0 0 0 1px var(--g2)}
 .rap .week{margin-bottom:14px}
@@ -1653,7 +1665,7 @@ function genererSalles(G, ctx){
 
 // ---- interface
 const genCut=()=> gen.passe ? new Date(1970,0,1) : TODAY;
-let gen={sort:{k:'ini',d:1}, passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
+let gen={sort:{k:'ini',d:1}, details:false, filtre:'', passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
 function gestGenerateur(box){
   if(!gen.trim){ const t=trimestreDe(TODAY); gen.trim=t.id; gen.weeks=new Set(semainesDe(t.id).filter(mk=>addDays(parse(mk),6)>genCut())); }
   const [tnom]=[trimestreDe(parse(semainesDe(gen.trim)[0])).nom];
@@ -1694,6 +1706,8 @@ function gestGenerateur(box){
   const u=document.getElementById('gUndo'); if(u) u.onclick=annulerGeneration;
   const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration);
   const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; renderGest(); };
+  const gd=document.getElementById('gDet'); if(gd) gd.onclick=()=>{ gen.details=!gen.details; renderGest(); };
+  const gf=document.getElementById('gFil'); if(gf) gf.onchange=()=>{ gen.filtre=gf.value; renderGest(); };
   box.querySelectorAll('.stat th[data-sort]').forEach(th=>th.onclick=()=>{ const k=th.dataset.sort; gen.sort = gen.sort.k===k ? {k, d:-gen.sort.d} : {k, d:['g1','j','n','g2','sg1','sg2','f24','fj','fn','fg2','fch','fds','ven','fer'].includes(k)?-1:1}; renderGest(); });
   const gp=document.getElementById('gaPrev'); if(gp) gp.onclick=()=>{ gen.pending.cursor=addDays(gen.pending.cursor,-7); renderGest(); };
   const gn=document.getElementById('gaNext'); if(gn) gn.onclick=()=>{ gen.pending.cursor=addDays(gen.pending.cursor,7); renderGest(); };
@@ -1775,15 +1789,52 @@ function annulerGeneration(){
   confirmBox(`Restaurer le tableau tel qu'il était avant la dernière génération?${modifsDepuis>0?`<br><br><b>Attention :</b> ${modifsDepuis} modification(s) ont été faites depuis; elles seront perdues.`:''}`,()=>{
     D.gardes=lg.avant.gardes; D.choix=lg.avant.choix; D.lastGen=null; Store.save(); Store.log('Dernière génération annulée'); gen.result=null; toast('Génération annulée'); renderGest(); });
 }
+// --- tableau d'équité du rapport : 6 colonnes par défaut, détails repliables, écart à la moyenne en couleur
+function statTableHtml(r){
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+  const rows=[...r.stats].map(s=>({...s, f24:s.f24||0, fj:s.fj||0, fn:s.fn||0, fg2:s.fg2||0, fch:s.fch||0, fer:s.fer||0,
+    sg1:Math.round((s.g1-((s.f24||0)+0.5*((s.fj||0)+(s.fn||0))))*10)/10, sg2:Math.round((s.g2-(s.fg2||0))*10)/10, m:D.membres.find(x=>x.ini===s.ini)||{}}))
+    .filter(s=>!gen.filtre || (gen.filtre==='24h'&&s.m.mode==='24h') || (gen.filtre==='12h'&&s.m.mode==='12h') || (gen.filtre==='paire'&&s.m.modeFds==='24h') || (gen.filtre==='trio'&&s.m.modeFds==='12h') || (gen.filtre==='ven'&&s.m.venSep));
+  const mg1=mean(rows.map(s=>s.g1)), mg2=mean(rows.map(s=>s.g2));
+  const moy=k=>mean(rows.map(s=>s[k]));
+  const fmt=x=>Number.isInteger(x)?String(x):(Math.round(x*10)/10).toFixed(1).replace('.',',');
+  const dev=(v,m)=>{ const e=Math.round((v-m)*10)/10, a=Math.abs(e); const cl=a>=1?'hi':(a>=0.5?'mid':'ok'); return `<span class="dev ${cl}">${e>0?'+':(e<0?'−':'')}${fmt(a)}</span>`; };
+  const det=gen.details;
+  const cols=[ // [clé, libellé, détail?, séparateur à gauche?]
+    ['g1','G1',false,true],['g2','G2'],['j','G1 J',true],['n','G1 N',true],
+    ['fds','Nb FDS',false,true],['fch','Charge'],['f24','24 h',true],['fj','J',true],['fn','N',true],['fg2','G2',true],
+    ['ven','Ven.',false,true],['fer','Fériés'],['sg1','Sem. G1',true],['sg2','Sem. G2',true],['dow','L M M J V',true]
+  ].filter(c=>det||!c[2]);
+  const grp=det
+    ? [['Membre',1],['Équité du trimestre',2],['dont',2],['Fins de semaine',2],['dont',4],['Semaine',2],['dont',3]]
+    : [['Membre',1],['Équité du trimestre',2],['Fins de semaine',2],['Semaine',2]];
+  const th=c=>{ const [k,l,d,sep]=c; const sortable=k!=='dow'; return `<th class="${sortable?'sortable ':''}n${sep?' sep':''}${gen.sort.k===k?' on':''}" ${sortable?`data-sort="${k}"`:''}>${l}${gen.sort.k===k?(gen.sort.d>0?' ▲':' ▼'):''}</th>`; };
+  rows.sort((a,b)=>{ const k=gen.sort.k, d=gen.sort.d; const va=a[k], vb=b[k]; if(va<vb) return -d; if(va>vb) return d; return a.ini.localeCompare(b.ini,'fr'); });
+  const td=(s,c)=>{ const [k,,,sep]=c; const cls=`n${sep?' sep':''}`;
+    if(k==='dow') return `<td class="${cls}" style="font-variant-numeric:tabular-nums;color:var(--muted)">${s.dow.join(' ')}</td>`;
+    if(k==='g1') return `<td class="${cls}">${fmt(s.g1)}${dev(s.g1,mg1)}</td>`;
+    if(k==='g2') return `<td class="${cls}">${fmt(s.g2)}${dev(s.g2,mg2)}</td>`;
+    return `<td class="${cls}">${k==='fch'?'<b>'+fmt(s[k])+'</b>':fmt(s[k])}</td>`; };
+  const prof=m=>`<span class="tag ${m.mode==='12h'?'t12':'t24'}">${m.mode==='12h'?'12 h':'24 h'}</span><span class="tag ${m.modeFds==='12h'?'t12':'t24'}">${m.modeFds==='12h'?'trio':'paire'}</span>${m.venSep?'<span class="tag resp">ven. sép.</span>':''}`;
+  return `<div class="gctl"><button class="btn sm" id="gDet">${det?'Masquer les détails':'Afficher les détails'}</button>
+      <select id="gFil"><option value="">Tous les membres</option><option value="24h"${gen.filtre==='24h'?' selected':''}>Semaine 24 h</option><option value="12h"${gen.filtre==='12h'?' selected':''}>Semaine 12 h</option><option value="paire"${gen.filtre==='paire'?' selected':''}>FDS en paire (24 h)</option><option value="trio"${gen.filtre==='trio'?' selected':''}>FDS en trio (12 h)</option><option value="ven"${gen.filtre==='ven'?' selected':''}>Vendredi séparé</option></select>
+      <span class="meta" style="margin:0">Écart à la moyenne ${gen.filtre?'des membres affichés':'du groupe'} : <span class="dev ok">±0,4</span> <span class="dev mid">±0,5</span> <span class="dev hi">±1 et plus</span></span></div>
+    <div class="tblwrap"><table class="stat"><thead>
+    <tr>${grp.map(([l,n],i)=>`<th class="grp${i>0?' sep':''}" colspan="${n}">${l}</th>`).join('')}</tr>
+    <tr><th class="sortable${gen.sort.k==='ini'?' on':''}" data-sort="ini">Membre${gen.sort.k==='ini'?(gen.sort.d>0?' ▲':' ▼'):''}</th>${cols.map(th).join('')}</tr></thead><tbody>
+    ${rows.map(s=>`<tr><td class="ini"><b>${s.ini}</b><br>${prof(s.m)}</td>${cols.map(c=>td(s,c)).join('')}</tr>`).join('')}
+    <tr class="moy"><td>Moyenne</td>${cols.map(c=>{ const [k,,,sep]=c; return `<td class="n${sep?' sep':''}">${k==='dow'?'':fmt(moy(k))}</td>`; }).join('')}</tr>
+    </tbody></table></div>
+    <div class="meta">Compteurs du trimestre, solde du trimestre précédent inclus (plafonné à ±1). Barème : G1 24 h = 1 (compte pour 1 G1 J + 1 G1 N), G1 J ou N = ½, G2 = 1. Charge FDS (samedi et dimanche seulement) : G1 24 h = 1, G1 J ou N = ½, G2 = 1; une FDS complète vaut 2 en paire comme en trio. Nb FDS = présence (règles « pas deux FDS consécutives » et « max 1 par mois »). Sem. G1 / Sem. G2 = totaux moins samedi-dimanche (vendredi inclus dans la semaine).</div>`;
+}
 function rapportHtml(r){
   const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0; const mg1=mean(r.stats.map(s=>s.g1)), mg2=mean(r.stats.map(s=>s.g2));
   return `<section class="rap"><h2>Rapport de génération <small>${r.trim} · ${r.nG} jours de garde, ${r.nC} ordres de salle · score ${r.score} · ${r.essais} constructions puis ${r.pas||0} mouvements de recuit en ${r.duree} s (meilleur : ${r.bestStep?'mouvement '+r.bestStep:'construction '+r.bestAt}; arrêt : ${r.arret}) · graine ${r.seed}</small></h2>
     ${r.trous.length?`<div class="err">${r.trous.length} trou(s) : ${r.trous.join(' · ')}</div>`:''}
     ${r.warn.length?`<div class="warn">${r.warn.join('<br>')}</div>`:''}
     ${r.detaches.length?`<div class="meta">Vendredis détachés (attribués comme jours de semaine) : ${r.detaches.map(k=>{const d=parse(k);return d.getDate()+' '+MOIS[d.getMonth()].slice(0,4)+'.';}).join(', ')}</div>`:''}
-    <div class="tblwrap"><table class="stat"><thead><tr>${[['ini','Membre'],['mode','Semaine'],['modeFds','FDS'],['venSep','Ven.'],['g1','G1','n'],['j','G1 J','n'],['n','G1 N','n'],['g2','G2','n'],['sg1','Sem. G1','n'],['sg2','Sem. G2','n'],['f24','FDS 24 h','n'],['fj','FDS J','n'],['fn','FDS N','n'],['fg2','FDS G2','n'],['fch','Charge FDS','n'],['fds','Nb FDS','n'],['ven','Ven.','n'],['fer','Fériés','n']].map(([k,l,n])=>`<th class="sortable${n?' n':''}${gen.sort.k===k?' on':''}" data-sort="${k}">${l}${gen.sort.k===k?(gen.sort.d>0?' ▲':' ▼'):''}</th>`).join('')}<th>L M M J V</th></tr></thead><tbody>
-    ${[...r.stats].map(s=>({...s, sg1:Math.round(((s.g1-((s.f24||0)+0.5*((s.fj||0)+(s.fn||0))))*10))/10, sg2:Math.round((s.g2-(s.fg2||0))*10)/10, m:D.membres.find(x=>x.ini===s.ini)||{}})).sort((a,b)=>{ const k=gen.sort.k, d=gen.sort.d; let va,vb; if(['mode','modeFds'].includes(k)){ va=a.m[k]||''; vb=b.m[k]||''; } else if(k==='venSep'){ va=a.m.venSep?1:0; vb=b.m.venSep?1:0; } else { va=a[k]; vb=b[k]; } if(va<vb) return -d; if(va>vb) return d; return a.ini.localeCompare(b.ini,'fr'); }).map(s=>{ const m=s.m; return `<tr><td><b>${s.ini}</b></td><td><span class="tag ${m.mode==='12h'?'t12':'t24'}">${m.mode==='12h'?'12 h (J/N)':'24 h'}</span></td><td><span class="tag ${m.modeFds==='12h'?'t12':'t24'}">${m.modeFds==='12h'?'12 h (trio)':'24 h (paire)'}</span></td><td>${m.venSep?'<span class="tag resp">séparé</span>':'<span class="tag">avec FDS</span>'}</td><td class="n">${s.g1}${Math.abs(s.g1-mg1)>=1?' <span class="dev">('+(s.g1>mg1?'+':'')+(s.g1-mg1).toFixed(1)+')</span>':''}</td><td class="n">${s.j}</td><td class="n">${s.n}</td><td class="n">${s.g2}${Math.abs(s.g2-mg2)>=1?' <span class="dev">('+(s.g2>mg2?'+':'')+(s.g2-mg2).toFixed(1)+')</span>':''}</td><td class="n">${s.sg1}</td><td class="n">${s.sg2}</td><td class="n">${s.f24||0}</td><td class="n">${s.fj||0}</td><td class="n">${s.fn||0}</td><td class="n">${s.fg2||0}</td><td class="n"><b>${s.fch||0}</b></td><td class="n">${s.fds}</td><td class="n">${s.ven}</td><td class="n">${s.fer||0}</td><td style="font-variant-numeric:tabular-nums">${s.dow.join(' ')}</td></tr>`; }).join('')}
-    </tbody></table></div><div class="meta">Compteurs du trimestre, solde du trimestre précédent inclus (plafonné à ±1). Moyennes : G1 ${mg1.toFixed(1)}, G2 ${mg2.toFixed(1)}. Barème : G1 24 h = 1 (compte pour 1 G1 J + 1 G1 N), G1 J ou N = ½, G2 = 1. Charge FDS (samedi et dimanche seulement) : G1 24 h = 1, G1 J ou N = ½, G2 = 1 — une FDS complète vaut 2 en paire comme en trio. Nb FDS = présence (sert aux règles « pas deux FDS consécutives » et « max 1 par mois »). Sem. G1 / Sem. G2 = totaux moins samedi-dimanche (vendredi inclus dans la semaine) : triez sur Charge FDS pour vérifier que ceux qui ont plus de fins de semaine ont moins de gardes de semaine.</div></section>`;
+    ${statTableHtml(r)}
+    </section>`;
 }
 
 // --- Vacances (maquette : saisie simple pour tester le générateur; le vrai module est celui de la collègue)
