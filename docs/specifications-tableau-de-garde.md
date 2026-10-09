@@ -94,6 +94,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Automne : semaine contenant le 1er septembre → semaine avant celle de Noël. Hiver : après la semaine du jour de l'An → fin avril (déborde sur la 1re semaine de mai). Été : début mai → semaine avant celle contenant le 1er septembre.
 - Deux semaines des Fêtes hors choix de vacances; règles de garde particulières à documenter (à confirmer).
 - Fériés : liste et compteur d'équité à part, attribués à la main par le coordonnateur dans la première version (le générateur ne les attribue pas; pas d'ordre de choix de salle ce jour-là); lundi férié non rattaché à la FDS.
+- Onglet Gestion > Fériés (2026-10-09) : liste des fériés avec, sous chaque date, l'équipe attribuée; un clic sur un férié ouvre à côté son éditeur de garde (24 h ou J/N, G2) avec les mêmes vérifications que l'onglet Horaire; tableau du nombre de gardes de fériés par membre (G1 24 h et G2 = 1, G1 J et G1 N = ½). Retirer un férié de la liste ne supprime pas la garde du jour.
 - Génération par trimestre (Hiver/Été/Automne/Fêtes), semaines exactes de la période, rejeu déterministe.
 
 ### 8. Vacances

@@ -1227,17 +1227,43 @@ function bindOrdre(ed,k){
   const ol=ed.querySelector('.ol'); if(ol) bindDrag(ol, order=>{ const c=JSON.parse(JSON.stringify(D.choix[k])); const full=[...c.ordre.slice(0,2),...order]; if(full.join()!==c.ordre.join()){ c.ordre=full; setC(c,'réordonné par glisser-déposer'); } });
   const sel=ed.querySelector('[data-o=addsel]'); if(sel) sel.onchange=()=>{ if(!sel.value) return; const c=JSON.parse(JSON.stringify(D.choix[k])); c.ordre.push(sel.value); setC(c,`${ini(sel.value)} ajouté en ${c.ordre.length}e`); };
 }
+// --- éditeur de garde d'un jour (partagé par Horaire et Fériés)
+function gardeRowsHtml(g, split){
+  return (split
+    ? `<div class="row"><span class="pill g1">G1 J</span><select data-r="g1j">${opts(g.g1||g.g1j,true)}</select></div><div class="row"><span class="pill g1">G1 N</span><select data-r="g1n">${opts(g.g1n,true)}</select></div>`
+    : `<div class="row"><span class="pill g1">G1</span><select data-r="g1">${opts(g.g1||g.g1j,true)}</select></div>`)
+    +`<div class="row"><span class="pill g2">G2</span><select data-r="g2">${opts(g.g2,true)}</select></div>`;
+}
+function gardeEdHtml(k, g){
+  const split=!!(g.g1j||g.g1n);
+  return `<div class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></div>
+      <div class="rows">${gardeRowsHtml(g,split)}</div>
+      <div class="msgs">${(D.gardes[k]?checkGarde(k,g):[]).map(x=>`<div class="warn">${x}</div>`).join('')}</div>`;
+}
+function enregistrerGarde(k,g){
+  const avant=D.gardes[k]; Store.setGarde(k,g);
+  if(!D.choix[k] && parse(k).getDay()>=1 && parse(k).getDay()<=5) Store.setChoix(k,ordreDefaut(k));
+  else if(D.choix[k]){ const c=D.choix[k]; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); Store.setChoix(k,{...c,ordre:[...top,...rest],nuit:g.g1n||null}); }
+  Store.log(`Garde ${k} : ${gTxt(g)}${avant?' (avant : '+gTxt(avant)+')':''}`); toast('Garde enregistrée');
+}
+function bindGardeEd(ed,k,onDone){
+  const read=()=>{ const g={}; ed.querySelectorAll('.rows select').forEach(s=>{ if(s.value) g[s.dataset.r]=s.value; }); return g; };
+  const refresh=()=>{ const g=read(); ed.querySelector('.msgs').innerHTML=checkGarde(k,g).map(x=>`<div class="warn">${x}</div>`).join(''); const complete=(g.g1||(g.g1j&&g.g1n))&&g.g2; ed.querySelector('[data-a=save]').disabled=!complete; ed.classList.toggle('dirty',JSON.stringify(g)!==JSON.stringify(D.gardes[k]||{})); };
+  ed.querySelectorAll('.rows select').forEach(s=>s.onchange=refresh);
+  ed.querySelectorAll('.seg2 button').forEach(b=>b.onclick=()=>{
+    const g=read(); const rows=ed.querySelector('.rows');
+    rows.innerHTML=gardeRowsHtml(g, b.dataset.m==='12');
+    ed.querySelectorAll('.seg2 button').forEach(x=>x.setAttribute('aria-pressed',x===b)); rows.querySelectorAll('select').forEach(s=>s.onchange=refresh); refresh();
+  });
+  ed.querySelector('[data-a=save]').onclick=()=>{ enregistrerGarde(k,read()); onDone(); };
+  ed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Effacer la garde du ${fmtLong(parse(k))}?`,()=>{ Store.setGarde(k,null); Store.setChoix(k,null); Store.log(`Garde ${k} effacée`); onDone(); });
+}
 function gestHoraire(box){
   const mon=monday(gCursor); let h=gNavHtml()+`<div class="edit week7">`;
   for(let i=0;i<7;i++){
-    const d=addDays(mon,i), k=key(d), g=D.gardes[k]||{}, split=!!(g.g1j||g.g1n), fds=isFds(d);
+    const d=addDays(mon,i), k=key(d), g=D.gardes[k]||{}, fds=isFds(d);
     h+=`<div class="ed${fds?' fds':''}" data-k="${k}"><h3>${JOURS[d.getDay()]} ${d.getDate()}${FERIES.has(k)?' <small>férié</small>':''}${k===key(TODAY)?'<small>aujourd\'hui</small>':''}</h3>
-      <div class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></div>
-      <div class="rows">${split
-        ? `<div class="row"><span class="pill g1">G1 J</span><select data-r="g1j">${opts(g.g1j,true)}</select></div><div class="row"><span class="pill g1">G1 N</span><select data-r="g1n">${opts(g.g1n,true)}</select></div>`
-        : `<div class="row"><span class="pill g1">G1</span><select data-r="g1">${opts(g.g1,true)}</select></div>`}
-        <div class="row"><span class="pill g2">G2</span><select data-r="g2">${opts(g.g2,true)}</select></div></div>
-      <div class="msgs">${(D.gardes[k]?checkGarde(k,g):[]).map(x=>`<div class="warn">${x}</div>`).join('')}</div>
+      ${gardeEdHtml(k,g)}
       <div class="actions"><button class="btn sm lock${D.locks&&D.locks[k]?' on':''}" data-a="lock" title="${D.locks&&D.locks[k]?'Verrouillé : le générateur ne touche pas ce jour':'Verrouiller ce jour contre le générateur'}">${D.locks&&D.locks[k]?'🔒':'🔓'}</button><button class="btn sm" data-a="clear" ${D.gardes[k]?'':'disabled'}>Effacer</button><button class="btn sm primary" data-a="save" disabled>Enregistrer</button></div>
       ${ordreHtml(k)}</div>`;
     if(i===4) h+=`<div class="satsun">`;
@@ -1245,21 +1271,7 @@ function gestHoraire(box){
   box.innerHTML=h+`</div></div>`; bindGNav();
   box.querySelectorAll('.ed').forEach(ed=>{
     const k=ed.dataset.k;
-    const read=()=>{ const g={}; ed.querySelectorAll('.rows select').forEach(s=>{ if(s.value) g[s.dataset.r]=s.value; }); return g; };
-    const refresh=()=>{ const g=read(); ed.querySelector('.msgs').innerHTML=checkGarde(k,g).map(x=>`<div class="warn">${x}</div>`).join(''); const complete=(g.g1||(g.g1j&&g.g1n))&&g.g2; ed.querySelector('[data-a=save]').disabled=!complete; ed.classList.toggle('dirty',JSON.stringify(g)!==JSON.stringify(D.gardes[k]||{})); };
-    ed.querySelectorAll('.rows select').forEach(s=>s.onchange=refresh);
-    ed.querySelectorAll('.seg2 button').forEach(b=>b.onclick=()=>{
-      const g=read(); const to12=b.dataset.m==='12';
-      const rows=ed.querySelector('.rows');
-      rows.innerHTML=(to12?`<div class="row"><span class="pill g1">G1 J</span><select data-r="g1j">${opts(g.g1||g.g1j,true)}</select></div><div class="row"><span class="pill g1">G1 N</span><select data-r="g1n">${opts(g.g1n,true)}</select></div>`
-                         :`<div class="row"><span class="pill g1">G1</span><select data-r="g1">${opts(g.g1||g.g1j,true)}</select></div>`)+`<div class="row"><span class="pill g2">G2</span><select data-r="g2">${opts(g.g2,true)}</select></div>`;
-      ed.querySelectorAll('.seg2 button').forEach(x=>x.setAttribute('aria-pressed',x===b)); rows.querySelectorAll('select').forEach(s=>s.onchange=refresh); refresh();
-    });
-    ed.querySelector('[data-a=save]').onclick=()=>{ const g=read(); const avant=D.gardes[k]; Store.setGarde(k,g);
-      if(!D.choix[k] && parse(k).getDay()>=1 && parse(k).getDay()<=5) Store.setChoix(k,ordreDefaut(k));
-      else if(D.choix[k]){ const c=D.choix[k]; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); Store.setChoix(k,{...c,ordre:[...top,...rest],nuit:g.g1n||null}); }
-      Store.log(`Garde ${k} : ${gTxt(g)}${avant?' (avant : '+gTxt(avant)+')':''}`); toast('Garde enregistrée'); renderGest(); };
-    ed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Effacer la garde du ${fmtLong(parse(k))}?`,()=>{ Store.setGarde(k,null); Store.setChoix(k,null); Store.log(`Garde ${k} effacée`); renderGest(); });
+    bindGardeEd(ed,k,renderGest);
     ed.querySelector('[data-a=lock]').onclick=()=>{ D.locks=D.locks||{}; if(D.locks[k]) delete D.locks[k]; else D.locks[k]=true; Store.save(); Store.log(`Jour ${k} ${D.locks[k]?'verrouillé':'déverrouillé'}`); renderGest(); };
     bindOrdre(ed,k);
   });
@@ -1338,13 +1350,33 @@ function gestMembres(box){
 function rebuildWho(){ const cur=who.value; who.innerHTML='<option value="">— personne —</option>'; [...D.membres].filter(m=>m.actif).sort((a,b)=>a.nom.localeCompare(b.nom,'fr')).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.nom+' ('+m.ini+')';who.appendChild(o);}); who.value=cur; }
 
 // --- Fériés
+let ferieSel='';
 function gestFeries(box){
-  const list=[...D.feries].sort();
-  box.innerHTML=`<div class="form" style="grid-template-columns:auto auto 1fr;align-items:end"><label>Ajouter un férié<input type="date" id="fDate"></label><button class="btn primary" id="fAdd" style="align-self:end">Ajouter</button><div></div></div>
-    <div class="chips col">${list.map(k=>`<span class="chip">${fmtLong(parse(k))} ${k.slice(0,4)}<button data-k="${k}" title="Retirer">×</button></span>`).join('')||'<span style="color:var(--muted)">Aucun férié</span>'}</div>
-    <p class="hors" style="margin-top:12px">Les fériés de semaine gardent un ordre de choix de salle (comptés comme jours réguliers pour les blocs). Ils sont signalés d'un point orange dans le calendrier.</p>`;
-  document.getElementById('fAdd').onclick=()=>{ const v=document.getElementById('fDate').value; if(!v||D.feries.includes(v)) return; Store.setFeries([...D.feries,v]); Store.log(`Férié ajouté : ${v}`); renderGest(); };
-  box.querySelectorAll('.chip button').forEach(b=>b.onclick=()=>{ Store.setFeries(D.feries.filter(x=>x!==b.dataset.k)); Store.log(`Férié retiré : ${b.dataset.k}`); renderGest(); });
+  const list=[...D.feries].sort(); const todayK=key(TODAY);
+  if(ferieSel && !list.includes(ferieSel)) ferieSel='';
+  // compteur de gardes de fériés par membre : G1 24 h et G2 = 1, G1 J et G1 N = ½
+  const cnt={}; actifs().forEach(m=>cnt[m.id]={g1:0,g2:0});
+  list.forEach(k=>{ const g=D.gardes[k]; if(!g) return; if(g.g1&&cnt[g.g1]) cnt[g.g1].g1+=1; if(g.g1j&&cnt[g.g1j]) cnt[g.g1j].g1+=.5; if(g.g1n&&cnt[g.g1n]) cnt[g.g1n].g1+=.5; if(g.g2&&cnt[g.g2]) cnt[g.g2].g2+=1; });
+  const rows=actifs().map(m=>({ini:m.ini,...cnt[m.id]})).filter(x=>x.g1||x.g2).sort((a,b)=>(b.g1+b.g2)-(a.g1+a.g2)||a.ini.localeCompare(b.ini,'fr'));
+  const fmtN=n=>n%1?n.toFixed(1).replace('.',','):String(n);
+  const resume=k=>{ const g=D.gardes[k]; if(!g) return '<span style="color:var(--muted)">à attribuer</span>'; return (g.g1?ini(g.g1):ini(g.g1j)+'/'+ini(g.g1n))+' · '+ini(g.g2); };
+  let h=`<div class="form" style="grid-template-columns:auto auto 1fr;align-items:end"><label>Ajouter un férié<input type="date" id="fDate"></label><button class="btn primary" id="fAdd" style="align-self:end">Ajouter</button><div></div></div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">`;
+  h+=`<div class="chips col" style="min-width:280px">${list.map(k=>`<span class="chip${k===ferieSel?' on':''}" data-k="${k}" role="button" tabindex="0" style="cursor:pointer${k===ferieSel?';border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)':''}"><span>${fmtLong(parse(k))} ${k.slice(0,4)}<br><small style="color:var(--muted)">${resume(k)}</small></span><button data-k="${k}" title="Retirer">×</button></span>`).join('')||'<span style="color:var(--muted)">Aucun férié</span>'}</div>`;
+  if(ferieSel){ const d=parse(ferieSel), g=D.gardes[ferieSel]||{};
+    h+=`<div class="ed${isFds(d)?' fds':''}" data-k="${ferieSel}" style="flex:1;min-width:280px;max-width:420px"><h3>${fmtLong(d)} ${d.getFullYear()}${ferieSel<todayK?'<small>passé</small>':(ferieSel===todayK?'<small>aujourd\'hui</small>':'')}</h3>
+      ${gardeEdHtml(ferieSel,g)}
+      <div class="actions"><button class="btn sm" data-a="clear" ${D.gardes[ferieSel]?'':'disabled'}>Effacer</button><button class="btn sm primary" data-a="save" disabled>Enregistrer</button></div></div>`; }
+  else if(list.length) h+=`<p class="hors" style="flex:1;min-width:240px;margin:0">Touchez un férié pour attribuer la garde.</p>`;
+  h+=`</div>`;
+  h+=`<h3 style="margin:18px 0 6px;font-size:15px">Gardes de fériés par membre</h3>`;
+  h+=rows.length?`<table class="stat"><thead><tr><th>Membre</th><th class="n">G1</th><th class="n">G2</th><th class="n">Total</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.ini}</td><td class="n">${fmtN(r.g1)}</td><td class="n">${fmtN(r.g2)}</td><td class="n">${fmtN(r.g1+r.g2)}</td></tr>`).join('')}</tbody></table>`:`<p class="hors">Aucune garde de férié attribuée.</p>`;
+  h+=`<p class="hors" style="margin-top:12px">Les gardes des fériés s'attribuent à la main, ici ou dans l'onglet Horaire; le générateur ne les touche pas. G1 24 h et G2 comptent 1, G1 J et G1 N comptent ½. Les fériés de semaine gardent un ordre de choix de salle (comptés comme jours réguliers pour les blocs). Ils sont signalés d'un point orange dans le calendrier.</p>`;
+  box.innerHTML=h;
+  document.getElementById('fAdd').onclick=()=>{ const v=document.getElementById('fDate').value; if(!v||D.feries.includes(v)) return; Store.setFeries([...D.feries,v]); Store.log(`Férié ajouté : ${v}`); ferieSel=v; renderGest(); };
+  box.querySelectorAll('.chip[data-k]').forEach(c=>{ const open=()=>{ ferieSel=c.dataset.k; renderGest(); }; c.onclick=open; c.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } }; });
+  box.querySelectorAll('.chip button').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const k=b.dataset.k; confirmBox(`Retirer le ${fmtLong(parse(k))} de la liste des fériés? La garde du jour, s'il y en a une, est conservée.`,()=>{ Store.setFeries(D.feries.filter(x=>x!==k)); Store.log(`Férié retiré : ${k}`); if(ferieSel===k) ferieSel=''; renderGest(); }); });
+  const ed=box.querySelector('.ed'); if(ed) bindGardeEd(ed,ferieSel,renderGest);
 }
 
 // --- Journal
