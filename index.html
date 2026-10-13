@@ -288,8 +288,11 @@ main{padding:14px;max-width:1500px;margin:0 auto}
 .modal .box{background:var(--bg);color:var(--ink);border-radius:var(--r);padding:18px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px}
 .modal .box p{margin:0}
 .gpick .box{max-width:600px;max-height:92vh;overflow:auto;gap:10px}
-.gpick .pick-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.gpick .pick-head b{font-size:16px;flex:1}
+.gpick .pick-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px}
+.gpick .pick-head b{font-size:16px}
+.gpick .pick-head .seg2{justify-self:center}
+.gpick .pick-head [data-a=close]{justify-self:end}
+@media (max-width:899px){ .gpick .pick-head{grid-template-columns:1fr auto} .gpick .pick-head .seg2{grid-column:1/-1;justify-self:start} }
 .gpick .day{border:2px solid var(--g2);box-shadow:0 0 0 3px var(--g2-soft)}
 .gpick .prole{border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--r-sm);padding:4px 10px;font-weight:700;font-size:15px;cursor:pointer;text-align:left}
 .gpick .prole:hover{border-color:var(--ink)}
@@ -1954,9 +1957,9 @@ function renderPicker(){
   if(g&&gen.pickRole&&roles.includes(gen.pickRole)){ const r=gen.pickRole, cur=g[r];
     const rang=pl=>({vac:0,post:1,g1:2,g1j:2.1,g1n:2.2,g2:3,pos:4,off:9})[pl.kind]+(pl.kind==='pos'?pl.pos/1000:0); // vacances d'abord, puis G1, G2, positions de salle jusqu'à la dernière, congés à la fin
     const membres=actifs().map(mm=>({mm,pl:placeDe(k,mm.id,data)})).sort((a,b)=>rang(a.pl)-rang(b.pl)||a.mm.ini.localeCompare(b.mm.ini,'fr'));
-    list=`<div class="pick-list"><div class="meta" style="margin:0">Qui prend le rôle <b>${lbl[r]}</b> ? Chaque nom indique ce que la personne fait ce jour-là dans le brouillon.</div>${membres.map(({mm,pl})=>{ const id=mm.id; const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
+    list=`<div class="pick-list">${membres.map(({mm,pl})=>{ const id=mm.id; const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
   m=document.createElement('div'); m.id='gPick'; m.className='modal gpick';
-  m.innerHTML=`<div class="box"><div class="pick-head"><b>${fmtLong(d)} ${d.getFullYear()} <small style="color:var(--muted);font-weight:400">brouillon</small></b>${g?`<span class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></span>`:''}<button class="btn sm" data-a="close" aria-label="Fermer">×</button></div>
+  m.innerHTML=`<div class="box"><div class="pick-head"><b>${fmtLong(d)} ${d.getFullYear()} <small style="color:var(--muted);font-weight:400">brouillon</small></b>${g?`<span class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></span>`:'<span></span>'}<button class="btn sm" data-a="close" aria-label="Fermer">×</button></div>
     <div class="pick-body"><div class="pick-left"><div class="pick-card">${g?dayCard(k,{data}):`<article class="day"><div class="body"><div class="empty">Aucune garde ce jour dans le brouillon</div></div></article>`}</div>
     ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}${g&&!list?'<div class="meta" style="margin:0">Cliquez un nom de rôle dans la carte pour choisir qui le prend.</div>':''}</div>
     <div class="pick-right">${list}</div></div>
