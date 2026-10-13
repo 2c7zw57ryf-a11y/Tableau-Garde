@@ -287,6 +287,22 @@ main{padding:14px;max-width:1500px;margin:0 auto}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal .box{background:var(--bg);color:var(--ink);border-radius:var(--r);padding:18px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px}
 .modal .box p{margin:0}
+.gpick .box{max-width:600px;max-height:92vh;overflow:auto;gap:10px}
+.gpick .pick-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gpick .pick-head b{font-size:16px;flex:1}
+.gpick .day{border:2px solid var(--g2);box-shadow:0 0 0 3px var(--g2-soft)}
+.gpick .prole{border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--r-sm);padding:4px 10px;font-weight:700;font-size:15px;cursor:pointer;text-align:left}
+.gpick .prole:hover{border-color:var(--ink)}
+.gpick .prole.on{border-color:var(--g2);box-shadow:inset 0 0 0 1px var(--g2);background:var(--g2-soft)}
+.gpick .pick-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px}
+.gpick .pick-list .meta{grid-column:1/-1}
+.gpick .pickrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--r-sm);padding:6px 10px;text-align:left;cursor:pointer;font-size:14px}
+.gpick .pickrow:hover{border-color:var(--ink)}
+.gpick .pickrow .pnom{flex:1;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpick .pickrow .ptag{font-size:12px;border-radius:999px;padding:1px 7px;background:var(--panel);white-space:nowrap}
+.gpick .pickrow.bad .ptag{background:var(--g2-soft);color:var(--g2-ink)}
+.gpick .pickrow.role .ptag{background:var(--g1-soft);color:var(--g1-ink)}
+.gpick .pickrow.cur{opacity:.5;cursor:default}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;z-index:40;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
 /* ---------- échanges ---------- */
@@ -1714,7 +1730,7 @@ function genererSalles(G, ctx){
 
 // ---- interface
 const genCut=()=> gen.passe ? new Date(1970,0,1) : TODAY;
-let gen={sort:{k:'ini',d:1}, details:false, filtre:'', openMods:new Set(), apercu:'semaine', editDay:null, passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
+let gen={sort:{k:'ini',d:1}, details:false, filtre:'', openMods:new Set(), apercu:'semaine', editDay:null, pickRole:null, passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
 function gestGenerateur(box){
   if(!gen.trim){ const t=trimestreDe(TODAY); gen.trim=t.id; gen.weeks=new Set(semainesDe(t.id).filter(mk=>addDays(parse(mk),6)>genCut())); }
   const [tnom]=[trimestreDe(parse(semainesDe(gen.trim)[0])).nom];
@@ -1754,18 +1770,15 @@ function gestGenerateur(box){
   document.getElementById('gRunFull').onclick=()=>{ gen.full=true; lancerGeneration(); };
   document.getElementById('gStop').onclick=()=>{ gen.stop=true; };
   const u=document.getElementById('gUndo'); if(u) u.onclick=annulerGeneration;
-  const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration);
+  const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>{ const inc=gen.pending.touched.filter(k=>{ const g=gen.pending.G[k]; return g && !((g.g1||(g.g1j&&g.g1n))&&g.g2); }); if(inc.length) return toast(`Brouillon incomplet : ${inc.length} jour(s) sans équipe complète (${fmtLong(parse(inc[0]))}${inc.length>1?'…':''})`); confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration); };
   const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; gen.editDay=null; renderGest(); };
   box.querySelectorAll('[data-gopen]').forEach(b=>b.onclick=()=>ouvrirGeneration(b.dataset.gopen));
   box.querySelectorAll('[data-gmods]').forEach(b=>b.onclick=()=>{ const id=b.dataset.gmods; gen.openMods.has(id)?gen.openMods.delete(id):gen.openMods.add(id); renderGest(); });
   box.querySelectorAll('[data-gundo]').forEach(b=>b.onclick=()=>{ const [vid,i]=b.dataset.gundo.split('|'); annulerModif(vid,+i); });
   box.querySelectorAll('[data-gedit]').forEach(b=>b.onclick=()=>{ gCursor=parse(b.dataset.gedit); gTab='horaire'; renderGest(); });
-  box.querySelectorAll('[data-gday]').forEach(b=>b.onclick=()=>{ gen.editDay=b.dataset.gday; renderGest(); });
+  box.querySelectorAll('[data-gday]').forEach(b=>b.onclick=()=>{ gen.editDay=b.dataset.gday; gen.pickRole=null; renderGest(); });
   box.querySelectorAll('[data-gweek]').forEach(c=>c.onclick=()=>{ gen.apercu='semaine'; gen.pending.cursor=parse(c.dataset.gweek); renderGest(); });
-  const bed=box.querySelector('#gRapport .ed[data-k]'); if(bed && gen.pending){ const k=bed.dataset.k; const read=bindGardeEdBase(bed,k,gen.pending.G);
-    bed.querySelector('[data-a=save]').onclick=()=>{ modifierBrouillon(k,read()); gen.editDay=null; renderGest(); };
-    bed.querySelector('[data-a=cancel]').onclick=()=>{ gen.editDay=null; renderGest(); };
-    bed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Retirer la garde du ${fmtLong(parse(k))} de ce brouillon?`,()=>{ modifierBrouillon(k,null); gen.editDay=null; renderGest(); }); }
+  renderPicker();
   box.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>confirmBox('Supprimer cet horaire généré de la mémoire? Le tableau de garde n\'est pas touché.',()=>{ if(gen.pending&&gen.pending.genId===b.dataset.gdel) gen.pending=null; Store.delGeneration(b.dataset.gdel); Store.log('Horaire généré supprimé de la mémoire'); renderGest(); }));
   const gd=document.getElementById('gDet'); if(gd) gd.onclick=()=>{ gen.details=!gen.details; renderGest(); };
   const gf=document.getElementById('gFil'); if(gf) gf.onchange=()=>{ gen.filtre=gf.value; renderGest(); };
@@ -1869,8 +1882,6 @@ function apercuHtml(p){
     <div class="week nome">`;
     const brouillon=!rec||rec.statut!=='publiee';
     for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k);
-      if(brouillon && gen.editDay===k){ const g=p.G[k]||{}; const dd=parse(k);
-        h+=`<div class="ed${isFds(dd)?' fds':''}" data-k="${k}" style="border-color:var(--g2)"><h3>${JOURS[dd.getDay()]} ${dd.getDate()}<small>brouillon</small></h3>${gardeEdHtml(k,g,p.G)}<div class="actions"><button class="btn sm" data-a="cancel">Annuler</button><button class="btn sm" data-a="clear" ${p.G[k]?'':'disabled'}>Effacer</button><button class="btn sm primary" data-a="save" disabled>Enregistrer</button></div></div>`; continue; }
       h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}<div class="actions" style="justify-content:center;margin-top:2px">${brouillon?`<button class="btn sm" data-gday="${k}" title="Changer les G1 et G2 de ce jour dans le brouillon">Modifier</button>`:`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire">Modifier dans Horaire</button>`}</div></div>`; }
     h+=`</div>`;
   }
@@ -1921,11 +1932,41 @@ function modifierBrouillon(k, g){
   const avant=p.G[k]?JSON.parse(JSON.stringify(p.G[k])):null; if(JSON.stringify(avant)===JSON.stringify(g)) return;
   v.modifs=v.modifs||[]; v.modifs.push({t:now().toISOString(), par:me||'', k, avant, apres:g?JSON.parse(JSON.stringify(g)):null});
   v.G[k]=g?JSON.parse(JSON.stringify(g)):null; if(!v.touched.includes(k)) v.touched.push(k);
-  if(v.salles[k]){ if(g){ const c=v.salles[k]; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); v.salles[k]={...c,ordre:[...top,...rest],nuit:g.g1n||null}; } else delete v.salles[k]; }
+  if(v.salles[k]){ if(g){ const c=v.salles[k]; const top=[g.g1||g.g1j,g.g2].filter(Boolean); const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); v.salles[k]={...c,ordre:[...top,...rest],nuit:g.g1n||null}; } else delete v.salles[k]; }
   v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
   if(g) p.G[k]=JSON.parse(JSON.stringify(g)); else delete p.G[k]; if(!p.touched.includes(k)) p.touched.push(k); p.salles=v.salles; p.genId=v.id; p.rapport=v.rapport;
   p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort();
   Store.log(`Brouillon modifié : garde ${k} → ${g?gTxtFull(g):'aucune'}`); toast('Brouillon modifié');
+}
+// --- sélecteur de remplaçant (brouillon) : la journée en évidence, un clic sur un rôle liste tout le monde avec sa place ce jour-là
+function renderPicker(){
+  let m=document.getElementById('gPick'); if(m) m.remove();
+  const p=gen.pending, k=gen.editDay; if(!p||!k) return;
+  const rec=p.genId&&(D.generations||[]).find(x=>x.id===p.genId); if(rec&&rec.statut==='publiee'){ gen.editDay=null; return; }
+  const data={gardes:p.G, choix:{...D.choix, ...p.salles}}; const g=p.G[k]||null; const d=parse(k);
+  const split=!!g&&(('g1j' in g)||('g1n' in g)); const roles=g?(split?['g1j','g1n','g2']:['g1','g2']):[]; const lbl={g1:'G1',g1j:'G1 J',g1n:'G1 N',g2:'G2'};
+  const rolesHtml=`<div class="role">${roles.map(r=>`<span class="pill ${r==='g2'?'g2':'g1'}">${lbl[r]}</span><button class="nm prole${gen.pickRole===r?' on':''}" data-role="${r}" title="Choisir qui prend ce rôle">${g[r]?ini(g[r]):'—'}</button>`).join('')}</div>`;
+  const w=g?checkGarde(k,g,p.G):[]; const incomplete=!!g&&!((g.g1||(g.g1j&&g.g1n))&&g.g2);
+  let list='';
+  if(g&&gen.pickRole&&roles.includes(gen.pickRole)){ const r=gen.pickRole, cur=g[r];
+    list=`<div class="pick-list"><div class="meta" style="margin:0">Qui prend le rôle <b>${lbl[r]}</b> ? Chaque nom indique ce que la personne fait ce jour-là dans le brouillon.</div>${actifs().map(mm=>{ const id=mm.id; const pl=placeDe(k,id,data); const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
+  m=document.createElement('div'); m.id='gPick'; m.className='modal gpick';
+  m.innerHTML=`<div class="box"><div class="pick-head"><b>${fmtLong(d)} ${d.getFullYear()} <small style="color:var(--muted);font-weight:400">brouillon</small></b>${g?`<span class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></span>`:''}<button class="btn sm" data-a="close" aria-label="Fermer">×</button></div>
+    <div class="pick-card">${g?dayCard(k,{data}):`<article class="day"><div class="body"><div class="empty">Aucune garde ce jour dans le brouillon</div></div></article>`}</div>
+    ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}
+    ${list}
+    <div class="actions">${g?`<button class="btn sm" data-a="clear">Retirer la garde</button>`:`<button class="btn sm" data-a="new24">Créer une garde 24 h</button><button class="btn sm" data-a="new12">Créer une garde fractionnée</button>`}<button class="btn sm primary" data-a="close">Terminer</button></div></div>`;
+  document.body.appendChild(m);
+  const role=m.querySelector('.day .role'); if(role) role.outerHTML=rolesHtml;
+  const close=()=>{ gen.editDay=null; gen.pickRole=null; renderGest(); };
+  m.onclick=e=>{ if(e.target===m) close(); }; m.querySelectorAll('[data-a=close]').forEach(b=>b.onclick=close);
+  m.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ gen.pickRole = gen.pickRole===b.dataset.role ? null : b.dataset.role; renderPicker(); });
+  m.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{ const id=b.dataset.pick, r=gen.pickRole; const ng={...g}; const autre=roleDe(g,id);
+    if(autre && autre!==r){ if(g[r]) ng[autre]=g[r]; else ng[autre]=''; } ng[r]=id; modifierBrouillon(k,ng); gen.pickRole=null; renderGest(); });
+  m.querySelectorAll('.seg2 button').forEach(b=>b.onclick=()=>{ const to12=b.dataset.m==='12'; if(to12===split) return; const ng=to12?{g1j:g.g1||'',g1n:'',g2:g.g2||''}:{g1:g.g1j||g.g1n||'',g2:g.g2||''}; modifierBrouillon(k,ng); gen.pickRole=null; renderGest(); });
+  const cl=m.querySelector('[data-a=clear]'); if(cl) cl.onclick=()=>confirmBox(`Retirer la garde du ${fmtLong(d)} de ce brouillon?`,()=>{ modifierBrouillon(k,null); gen.pickRole=null; renderGest(); });
+  const n24=m.querySelector('[data-a=new24]'); if(n24) n24.onclick=()=>{ modifierBrouillon(k,{g1:'',g2:''}); gen.pickRole='g1'; renderGest(); };
+  const n12=m.querySelector('[data-a=new12]'); if(n12) n12.onclick=()=>{ modifierBrouillon(k,{g1j:'',g1n:'',g2:''}); gen.pickRole='g1j'; renderGest(); };
 }
 const gLbl=g=>g?gTxtFull(g):'—';
 function modifsHtml(v){
@@ -2142,6 +2183,7 @@ function preset(p){
 document.querySelectorAll('.presets button').forEach(b=>b.onclick=()=>preset(b.dataset.p));
 document.getElementById('btnPrint').onclick=()=>{ preset('week'); dlg.hidden=false; };
 document.getElementById('pCancel').onclick=()=>dlg.hidden=true;
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && gen.editDay){ gen.editDay=null; gen.pickRole=null; renderGest(); } });
 dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.hidden=true; });
 function g1Txt(g,d){
   if(!g) return '—';
