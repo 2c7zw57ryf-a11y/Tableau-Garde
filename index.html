@@ -294,8 +294,11 @@ main{padding:14px;max-width:1500px;margin:0 auto}
 .gpick .prole{border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--r-sm);padding:4px 10px;font-weight:700;font-size:15px;cursor:pointer;text-align:left}
 .gpick .prole:hover{border-color:var(--ink)}
 .gpick .prole.on{border-color:var(--g2);box-shadow:inset 0 0 0 1px var(--g2);background:var(--g2-soft)}
+.gpick .pick-body{display:grid;grid-template-columns:1fr;gap:10px}
+.gpick .pick-left{display:flex;flex-direction:column;gap:8px;min-width:0}
 .gpick .pick-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px}
 .gpick .pick-list .meta{grid-column:1/-1}
+@media (min-width:900px){ .gpick .box{max-width:1000px} .gpick .pick-body{grid-template-columns:minmax(0,1fr) 320px;align-items:start} .gpick .pick-list{grid-template-columns:1fr;max-height:72vh;overflow:auto;padding-right:2px} .gpick .pick-right:empty{display:none} }
 .gpick .pickrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--r-sm);padding:6px 10px;text-align:left;cursor:pointer;font-size:14px}
 .gpick .pickrow:hover{border-color:var(--ink)}
 .gpick .pickrow .pnom{flex:1;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1949,12 +1952,14 @@ function renderPicker(){
   const w=g?checkGarde(k,g,p.G):[]; const incomplete=!!g&&!((g.g1||(g.g1j&&g.g1n))&&g.g2);
   let list='';
   if(g&&gen.pickRole&&roles.includes(gen.pickRole)){ const r=gen.pickRole, cur=g[r];
-    list=`<div class="pick-list"><div class="meta" style="margin:0">Qui prend le rôle <b>${lbl[r]}</b> ? Chaque nom indique ce que la personne fait ce jour-là dans le brouillon.</div>${actifs().map(mm=>{ const id=mm.id; const pl=placeDe(k,id,data); const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
+    const rang=pl=>({vac:0,post:1,g1:2,g1j:2.1,g1n:2.2,g2:3,pos:4,off:9})[pl.kind]+(pl.kind==='pos'?pl.pos/1000:0); // vacances d'abord, puis G1, G2, positions de salle jusqu'à la dernière, congés à la fin
+    const membres=actifs().map(mm=>({mm,pl:placeDe(k,mm.id,data)})).sort((a,b)=>rang(a.pl)-rang(b.pl)||a.mm.ini.localeCompare(b.mm.ini,'fr'));
+    list=`<div class="pick-list"><div class="meta" style="margin:0">Qui prend le rôle <b>${lbl[r]}</b> ? Chaque nom indique ce que la personne fait ce jour-là dans le brouillon.</div>${membres.map(({mm,pl})=>{ const id=mm.id; const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
   m=document.createElement('div'); m.id='gPick'; m.className='modal gpick';
   m.innerHTML=`<div class="box"><div class="pick-head"><b>${fmtLong(d)} ${d.getFullYear()} <small style="color:var(--muted);font-weight:400">brouillon</small></b>${g?`<span class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></span>`:''}<button class="btn sm" data-a="close" aria-label="Fermer">×</button></div>
-    <div class="pick-card">${g?dayCard(k,{data}):`<article class="day"><div class="body"><div class="empty">Aucune garde ce jour dans le brouillon</div></div></article>`}</div>
-    ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}
-    ${list}
+    <div class="pick-body"><div class="pick-left"><div class="pick-card">${g?dayCard(k,{data}):`<article class="day"><div class="body"><div class="empty">Aucune garde ce jour dans le brouillon</div></div></article>`}</div>
+    ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}${g&&!list?'<div class="meta" style="margin:0">Cliquez un nom de rôle dans la carte pour choisir qui le prend.</div>':''}</div>
+    <div class="pick-right">${list}</div></div>
     <div class="actions">${g?`<button class="btn sm" data-a="clear">Retirer la garde</button>`:`<button class="btn sm" data-a="new24">Créer une garde 24 h</button><button class="btn sm" data-a="new12">Créer une garde fractionnée</button>`}<button class="btn sm primary" data-a="close">Terminer</button></div></div>`;
   document.body.appendChild(m);
   const role=m.querySelector('.day .role'); if(role) role.outerHTML=rolesHtml;
