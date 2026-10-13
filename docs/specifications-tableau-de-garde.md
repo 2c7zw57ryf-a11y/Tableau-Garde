@@ -79,6 +79,7 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Pas deux FDS de garde consécutives.
 - Pas de nuit de garde le lundi au retour de vacances.
 - Jamais en garde pendant ses vacances; jamais deux rôles le même jour; pas de garde le jour d'un post-garde.
+- Rôle conforme au mode du membre (correctif 2026-10-13) : G1 24 h seulement pour un membre 24 h, G1 J ou G1 N seulement pour un membre 12 h; en semaine selon `mode`, samedi-dimanche selon `modeFds`, vendredi selon l'un ou l'autre (fin de semaine en trio ou vendredi détaché). Le recuit ne peut plus placer un membre 24 h sur une demi-garde.
 
 ### 5. Règles souples (score)
 - Dans l'ordre : 1) équité G1/G2 du trimestre; 2) max 1 FDS de garde par mois; 3) pas de garde de semaine (lun-jeu) la semaine avant ni après sa FDS; 4) même nombre de lundis, …, vendredis par membre; 5) jeudi privilégié pour qui part en vacances la semaine suivante.

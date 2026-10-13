@@ -1602,6 +1602,8 @@ function genererEssai(ctx, seed){
 function jourValide(G,k){ const g=G[k]; if(!g) return true; const ids=[g.g1,g.g1j,g.g1n,g.g2].filter(Boolean); if(new Set(ids).size!==ids.length) return false;
   const d=parse(k), dow=d.getDay(); const dansFds = dow===6||dow===0; const versFds = dow===5||dow===6;
   for(const r of ['g1','g1j','g1n','g2']){ const id=g[r]; if(!id) continue; if(enVac(id,k)) return false; if(!dansFds && nuitLaVeille(G,k,id)) return false;
+    // rôle compatible avec le mode : semaine = mode, sam-dim = modeFds, vendredi = l'un ou l'autre (FDS en trio ou vendredi détaché)
+    const modes=M[id]?(dansFds?[M[id].modeFds]:(dow===5?[M[id].mode,M[id].modeFds]:[M[id].mode])):['24h','12h']; if(r==='g1' && !modes.includes('24h')) return false; if((r==='g1j'||r==='g1n') && !modes.includes('12h')) return false;
     const nuit=r==='g1'||r==='g1n'; if(nuit && dow===1 && enVac(id,key(addDays(d,-1)))) return false; if(nuit && !versFds && gardeLendemain(G,k,id)) return false; } return true; }
 function fdsProche(G,id,fri){ // une autre FDS (sam/dim) à ±7 jours
   for(const off of [-7,7]){ const s=key(addDays(fri,off+1)), d=key(addDays(fri,off+2)); for(const k of [s,d]){ const g=G[k]; if(g && [g.g1,g.g1j,g.g1n,g.g2].includes(id)) return true; } } return false; }
@@ -1657,7 +1659,8 @@ function ameliorer(G, ctx2, R, days, moves, T){
     } else { // remplacement par un autre membre admissible
       const d1=parse(k1); if(isFds(d1) && r!=='g2') continue;
       if(isFds(d1) && d1.getDay()!==6 && R()<0.7) continue;
-      const cand=ids.filter(id=>id!==id1 && (!isFds(d1) || mem(id).modeFds==='12h' || mem(id).mode==='12h' || R()<0.3));
+      const cand=ids.filter(id=>id!==id1 && (!isFds(d1) || mem(id).modeFds==='12h' || mem(id).mode==='12h' || R()<0.3)
+        && !(r==='g1' && mem(id).mode==='12h') && !((r==='g1j'||r==='g1n') && mem(id).mode==='24h'));
       const id2=cand[Math.floor(R()*cand.length)]; if(!id2) continue;
       if(isFds(d1) && mem(id1).modeFds==='24h' && mem(id2).modeFds!=='12h') continue;
       const save={...g1}; g1[r]=id2; if(!jourValide(G,k1)){ G[k1]=save; continue; }
