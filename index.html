@@ -1260,11 +1260,12 @@ function gardeEdHtml(k, g){
       <div class="rows">${gardeRowsHtml(g,split)}</div>
       <div class="msgs">${(D.gardes[k]?checkGarde(k,g):[]).map(x=>`<div class="warn">${x}</div>`).join('')}</div>`;
 }
-function enregistrerGarde(k,g){
-  const avant=D.gardes[k]; Store.setGarde(k,g);
+function enregistrerGarde(k,g,opts={}){
+  const avant=D.gardes[k]?JSON.parse(JSON.stringify(D.gardes[k])):null; Store.setGarde(k,g);
   if(!D.choix[k] && parse(k).getDay()>=1 && parse(k).getDay()<=5) Store.setChoix(k,ordreDefaut(k));
   else if(D.choix[k]){ const c=D.choix[k]; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); Store.setChoix(k,{...c,ordre:[...top,...rest],nuit:g.g1n||null}); }
   Store.log(`Garde ${k} : ${gTxt(g)}${avant?' (avant : '+gTxt(avant)+')':''}`); toast('Garde enregistrée');
+  if(!opts.sansVersion && JSON.stringify(avant)!==JSON.stringify(g)) consignerModif(k, avant, g);
 }
 function bindGardeEd(ed,k,onDone){
   const read=()=>{ const g={}; ed.querySelectorAll('.rows select').forEach(s=>{ if(s.value) g[s.dataset.r]=s.value; }); return g; };
@@ -1276,7 +1277,7 @@ function bindGardeEd(ed,k,onDone){
     ed.querySelectorAll('.seg2 button').forEach(x=>x.setAttribute('aria-pressed',x===b)); rows.querySelectorAll('select').forEach(s=>s.onchange=refresh); refresh();
   });
   ed.querySelector('[data-a=save]').onclick=()=>{ enregistrerGarde(k,read()); onDone(); };
-  ed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Effacer la garde du ${fmtLong(parse(k))}?`,()=>{ Store.setGarde(k,null); Store.setChoix(k,null); Store.log(`Garde ${k} effacée`); onDone(); });
+  ed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Effacer la garde du ${fmtLong(parse(k))}?`,()=>{ const avant=D.gardes[k]?JSON.parse(JSON.stringify(D.gardes[k])):null; Store.setGarde(k,null); Store.setChoix(k,null); Store.log(`Garde ${k} effacée`); if(avant) consignerModif(k, avant, null); onDone(); });
 }
 function gestHoraire(box){
   const mon=monday(gCursor); let h=gNavHtml()+`<div class="edit week7">`;
@@ -1690,7 +1691,7 @@ function genererSalles(G, ctx){
 
 // ---- interface
 const genCut=()=> gen.passe ? new Date(1970,0,1) : TODAY;
-let gen={sort:{k:'ini',d:1}, details:false, filtre:'', passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
+let gen={sort:{k:'ini',d:1}, details:false, filtre:'', openMods:new Set(), passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
 function gestGenerateur(box){
   if(!gen.trim){ const t=trimestreDe(TODAY); gen.trim=t.id; gen.weeks=new Set(semainesDe(t.id).filter(mk=>addDays(parse(mk),6)>genCut())); }
   const [tnom]=[trimestreDe(parse(semainesDe(gen.trim)[0])).nom];
@@ -1733,6 +1734,9 @@ function gestGenerateur(box){
   const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration);
   const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; renderGest(); };
   box.querySelectorAll('[data-gopen]').forEach(b=>b.onclick=()=>ouvrirGeneration(b.dataset.gopen));
+  box.querySelectorAll('[data-gmods]').forEach(b=>b.onclick=()=>{ const id=b.dataset.gmods; gen.openMods.has(id)?gen.openMods.delete(id):gen.openMods.add(id); renderGest(); });
+  box.querySelectorAll('[data-gundo]').forEach(b=>b.onclick=()=>{ const [vid,i]=b.dataset.gundo.split('|'); annulerModif(vid,+i); });
+  box.querySelectorAll('[data-gedit]').forEach(b=>b.onclick=()=>{ gCursor=parse(b.dataset.gedit); gTab='horaire'; renderGest(); });
   box.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>confirmBox('Supprimer cet horaire généré de la mémoire? Le tableau de garde n\'est pas touché.',()=>{ if(gen.pending&&gen.pending.genId===b.dataset.gdel) gen.pending=null; Store.delGeneration(b.dataset.gdel); Store.log('Horaire généré supprimé de la mémoire'); renderGest(); }));
   const gd=document.getElementById('gDet'); if(gd) gd.onclick=()=>{ gen.details=!gen.details; renderGest(); };
   const gf=document.getElementById('gFil'); if(gf) gf.onchange=()=>{ gen.filtre=gf.value; renderGest(); };
@@ -1813,26 +1817,58 @@ function apercuHtml(p){
   const rec=p.genId&&(D.generations||[]).find(x=>x.id===p.genId);
   let h=`<section class="rap"><h2>Aperçu de l'horaire généré <small>${p.changed.length} jour(s) de garde modifié(s) · ${rec?`généré le ${fmtDT(rec.creeA)} · ${rec.statut==='publiee'?'déjà publié le '+fmtDT(rec.publieeA):'brouillon conservé en mémoire, pas encore publié'}`:'rien n\'est encore appliqué'}</small></h2>
     <div class="actions" style="justify-content:flex-start;margin-bottom:10px"><button class="btn primary" id="gApply">${rec&&rec.statut==='publiee'?'Appliquer de nouveau':'Publier au tableau'}</button><button class="btn" id="gDiscard">Fermer l'aperçu</button></div>
-    <div class="gnav"><button id="gaPrev" ${i<=0?'disabled':''}>‹</button><div class="title">${gTitle(mon)}</div><button id="gaNext" ${i>=weeks.length-1?'disabled':''}>›</button><span class="meta">semaine ${i+1} de ${weeks.length} · les jours modifiés sont encadrés en orange</span></div>
+    <div class="gnav"><button id="gaPrev" ${i<=0?'disabled':''}>‹</button><div class="title">${gTitle(mon)}</div><button id="gaNext" ${i>=weeks.length-1?'disabled':''}>›</button><span class="meta">semaine ${i+1} de ${weeks.length} · les jours modifiés sont encadrés en orange</span>${rec&&rec.statut==='publiee'?`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire pour changer les G1 et G2; chaque modification est consignée et annulable">Modifier cette semaine</button>`:''}</div>
     <div class="week nome">`;
   for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k); h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}</div>`; }
   return h+`</div>${rapportHtml(p.rapport)}</section>`;
 }
 // --- horaires générés conservés en mémoire (brouillons et publiés)
 const fmtDT=t=>{ if(!t) return ''; const d=new Date(t); return `${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}. ${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+// --- versions modifiées : chaque modification de garde faite à la main est consignée dans une « version modifiée »
+//     de l'horaire publié qui couvre ce jour (l'original reste intact); chaque modification est annulable.
+function versionPourJour(k){
+  const mk=key(monday(parse(k))); const L=D.generations||[];
+  const orig=L.filter(x=>x.statut==='publiee'&&!x.origine&&!x.manuel&&(x.weeks||[]).includes(mk)).sort((a,b)=>(a.publieeA||'')<(b.publieeA||'')?1:-1)[0];
+  if(orig){ const v=L.find(x=>x.origine===orig.id); if(v) return v;
+    return {id:uuid(), trim:orig.trim, creeA:now().toISOString(), par:me||'', statut:'publiee', publieeA:orig.publieeA, publieePar:orig.publieePar, note:'', origine:orig.id, seed:orig.seed, score:orig.score, trous:orig.trous, nG:orig.nG, nC:orig.nC, weeks:[...(orig.weeks||[])], etapes:orig.etapes, G:JSON.parse(JSON.stringify(orig.G||{})), salles:orig.salles||{}, touched:[...(orig.touched||[])], changed:[], rapport:orig.rapport, modifs:[]}; }
+  const tr=trimestreDe(parse(k)).id; const v=L.find(x=>x.manuel&&x.trim===tr); if(v) return v;
+  return {id:uuid(), trim:tr, creeA:now().toISOString(), par:me||'', statut:'publiee', publieeA:now().toISOString(), publieePar:me||'', note:'', manuel:true, score:null, trous:0, nG:0, nC:0, weeks:[], etapes:{fds:false,sem:false,salles:false}, G:{}, salles:{}, touched:[], changed:[], rapport:null, modifs:[]};
+}
+function consignerModif(k, avant, apres){
+  const v=versionPourJour(k); v.modifs=v.modifs||[];
+  v.modifs.push({t:now().toISOString(), par:me||'', k, avant:avant?JSON.parse(JSON.stringify(avant)):null, apres:apres?JSON.parse(JSON.stringify(apres)):null});
+  v.G[k]=apres?JSON.parse(JSON.stringify(apres)):null; if(!v.touched.includes(k)) v.touched.push(k); v.nG=Object.keys(v.G).filter(x=>v.G[x]).length;
+  Store.saveGeneration(v);
+}
+function annulerModif(vid, i){
+  const v=(D.generations||[]).find(x=>x.id===vid); const m=v&&v.modifs&&v.modifs[i]; if(!m||m.annulee) return;
+  if(JSON.stringify(D.gardes[m.k]||null)!==JSON.stringify(m.apres)) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
+  if(m.avant) enregistrerGarde(m.k, m.avant, {sansVersion:true});
+  else { Store.setGarde(m.k,null); Store.setChoix(m.k,null); Store.log(`Garde ${m.k} effacée (annulation d'une modification)`); }
+  m.annulee=true; m.annuleeA=now().toISOString(); v.G[m.k]=m.avant?JSON.parse(JSON.stringify(m.avant)):null; v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
+  toast('Modification annulée'); renderGest();
+}
+const gLbl=g=>g?gTxtFull(g):'—';
+function modifsHtml(v){
+  const L=(v.modifs||[]).map((m,i)=>({...m,i})).reverse();
+  return `<tr class="mods"><td colspan="8" style="padding:4px 8px 10px 24px"><table class="stat" style="max-width:900px"><tbody>${L.map(m=>{ const d=parse(m.k); return `<tr${m.annulee?' style="color:var(--muted);text-decoration:line-through"':''}><td style="white-space:nowrap">${fmtDT(m.t)}${m.par?' · '+ini(m.par):''}</td><td style="white-space:nowrap">${JOURS_C[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}.</td><td>${gLbl(m.avant)} → ${gLbl(m.apres)}</td><td class="n">${m.annulee?'<span class="tag">annulée</span>':`<button class="btn sm" data-gundo="${v.id}|${m.i}">Annuler</button>`}</td></tr>`; }).join('')}</tbody></table></td></tr>`;
+}
 function historiqueHtml(){
   const L=[...(D.generations||[])].sort((a,b)=>a.creeA<b.creeA?1:-1); if(!L.length) return '';
   const nomTrim=tr=>{ try{ return trimestreDe(parse(semainesDe(tr)[0])).nom; }catch(e){ return tr; } };
-  const st=g=>g.statut==='publiee'?`<span class="tag t24">Publié le ${fmtDT(g.publieeA)}${g.publieePar?' par '+ini(g.publieePar):''}</span>`:(g.statut==='annulee'?`<span class="tag resp">Publié puis annulé</span>`:`<span class="tag">Brouillon</span>`);
+  const st=g=>{ const n=(g.modifs||[]).filter(m=>!m.annulee).length; const mod=(g.origine||g.manuel)?` <span class="tag resp">${n} modification${n>1?'s':''}</span> <button class="btn sm" data-gmods="${g.id}">${gen.openMods.has(g.id)?'Masquer':'Détails'}</button>`:'';
+    if(g.statut==='publiee') return `<span class="tag t24">${g.manuel?'En vigueur':'Publié le '+fmtDT(g.publieeA)+(g.publieePar?' par '+ini(g.publieePar):'')}</span>`+mod;
+    if(g.statut==='annulee') return `<span class="tag resp">Publié puis annulé</span>`; return `<span class="tag">Brouillon</span>`; };
+  const lbl=g=>nomTrim(g.trim)+(g.origine?' <small style="color:var(--muted)">version modifiée de l\'horaire du '+fmtDT((L.find(x=>x.id===g.origine)||{}).creeA)+'</small>':(g.manuel?' <small style="color:var(--muted)">modifications manuelles</small>':''));
   return `<section class="rap"><h2>Horaires générés <small>conservés en mémoire pour les responsables; un brouillon n'est pas visible des membres tant qu'il n'est pas publié</small></h2>
     <div class="tblwrap"><table class="stat"><thead><tr><th>Généré le</th><th>Trimestre</th><th class="n">Semaines</th><th class="n">Jours</th><th class="n">Score</th><th class="n">Trous</th><th>Statut</th><th></th></tr></thead><tbody>
-    ${L.map(g=>`<tr${gen.pending&&gen.pending.genId===g.id?' style="font-weight:700"':''}><td>${fmtDT(g.creeA)}${g.par?' <span class="meta">'+ini(g.par)+'</span>':''}</td><td>${nomTrim(g.trim)}</td><td class="n">${(g.weeks||[]).length}</td><td class="n">${g.nG||0}</td><td class="n">${g.score}</td><td class="n">${g.trous||0}</td><td>${st(g)}</td><td style="white-space:nowrap"><button class="btn sm" data-gopen="${g.id}">Ouvrir</button> <button class="btn sm" data-gdel="${g.id}">Supprimer</button></td></tr>`).join('')}
+    ${L.map(g=>`<tr${gen.pending&&gen.pending.genId===g.id?' style="font-weight:700"':''}><td>${fmtDT(g.creeA)}${g.par?' <span class="meta">'+ini(g.par)+'</span>':''}</td><td>${lbl(g)}</td><td class="n">${(g.weeks||[]).length||'—'}</td><td class="n">${g.nG||0}</td><td class="n">${g.score??'—'}</td><td class="n">${g.trous||0}</td><td>${st(g)}</td><td style="white-space:nowrap"><button class="btn sm" data-gopen="${g.id}">Ouvrir</button> <button class="btn sm" data-gdel="${g.id}">Supprimer</button></td></tr>${gen.openMods.has(g.id)?modifsHtml(g):''}`).join('')}
     </tbody></table></div></section>`;
 }
 function ouvrirGeneration(id){
   const g=(D.generations||[]).find(x=>x.id===id); if(!g) return;
   const G={}; for(const k in D.gardes) G[k]=JSON.parse(JSON.stringify(D.gardes[k])); for(const k in (g.G||{})){ if(g.G[k]) G[k]=g.G[k]; else delete G[k]; }
-  const mondays=semainesDe(g.trim), weeks=g.weeks||mondays, ids=actifs().map(m=>m.id);
+  const mondays=semainesDe(g.trim), weeks=(g.weeks&&g.weeks.length)?g.weeks:mondays, ids=actifs().map(m=>m.id);
   const changed=[...(g.touched||[])].filter(k=>JSON.stringify(D.gardes[k]||null)!==JSON.stringify(g.G[k]||null)).sort();
   gen.trim=g.trim; gen.weeks=new Set(weeks); gen.result=null;
   gen.pending={G, salles:g.salles||{}, touched:[...(g.touched||[])], changed, ctx:{weeks, weekSet:new Set(weeks), mondays, ids, etapes:g.etapes||{fds:true,sem:true,salles:true}}, rapport:g.rapport||{stats:[],trous:[],warn:[],detaches:[]}, cursor:parse(weeks[0]), genId:g.id};

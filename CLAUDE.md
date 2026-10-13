@@ -21,7 +21,8 @@ Langue de l'interface et du code (commentaires, noms) : français québécois. T
 ## Structure du code (index.html)
 - Données : `D` (gardes `{jour:{g1|g1j|g1n|g2}}`, choix `{jour:{ordre[],nuit,postGarde[],absents[],hb?}}`,
   vacances `[{membre,debut,fin,motif?,echange?}]`, feries[], locks{}, echanges[], journal[], reglages, blocs, capacites,
-  generations[] `{id,trim,creeA,par,statut,publieeA,publieePar,G,salles,touched,changed,rapport,…}`).
+  generations[] `{id,trim,creeA,par,statut,publieeA,publieePar,G,salles,touched,changed,rapport,origine?,manuel?,modifs?[]}`).
+- Versions modifiées : `enregistrerGarde` → `consignerModif` → `versionPourJour`; annulation par `annulerModif`.
 - Vues : Semaine, Mois, Mes jours, Échanges, Impression ; Gestion (responsables) : Horaire, Vacances, Générateur,
   Membres, Fériés, Journal, Outils.
 - Générateur : `trimestreDe`, `semainesDe`, `compteurs`, `scoreDe`, `genererEssai` (constructions),
