@@ -1180,17 +1180,17 @@ function opts(sel, allowNone){ let s=allowNone?`<option value="">—</option>`:'
 function gTitle(mon){ const sun=addDays(mon,6); return (mon.getMonth()===sun.getMonth()? mon.getDate()+' – '+sun.getDate()+' '+MOIS[mon.getMonth()] : mon.getDate()+' '+MOIS[mon.getMonth()].slice(0,4)+'. – '+sun.getDate()+' '+MOIS[sun.getMonth()].slice(0,4)+'.')+' '+sun.getFullYear(); }
 function gNavHtml(){ const mon=monday(gCursor); return `<div class="gnav"><button id="gPrev">‹</button><button id="gToday">Aujourd'hui</button><button id="gNext">›</button><div class="title">${gTitle(mon)}</div></div>`; }
 function bindGNav(){ document.getElementById('gPrev').onclick=()=>{gCursor=addDays(gCursor,-7);renderGest();}; document.getElementById('gNext').onclick=()=>{gCursor=addDays(gCursor,7);renderGest();}; document.getElementById('gToday').onclick=()=>{gCursor=new Date(TODAY);renderGest();}; }
-function nightBefore(k){ const g=D.gardes[key(addDays(parse(k),-1))]; return g ? [g.g1,g.g1n].filter(Boolean) : []; }
+function nightBefore(k,GG=D.gardes){ const g=GG[key(addDays(parse(k),-1))]; return g ? [g.g1,g.g1n].filter(Boolean) : []; }
 
 // validations d'un jour de garde (avertissements, pas des blocages)
-function checkGarde(k,g){
+function checkGarde(k,g,GG=D.gardes){
   const w=[], ids=[g.g1,g.g1j,g.g1n,g.g2].filter(Boolean);
   if(new Set(ids).size!==ids.length) w.push('Une même personne occupe deux rôles.');
   ids.forEach(id=>{ if(enVac(id,k)) w.push(ini(id)+' est en vacances ce jour-là.'); });
-  nightBefore(k).forEach(id=>{ if(ids.includes(id)) w.push(ini(id)+' est en post-garde (nuit la veille).'); });
+  nightBefore(k,GG).forEach(id=>{ if(ids.includes(id)) w.push(ini(id)+' est en post-garde (nuit la veille).'); });
   const d=parse(k);
   if(d.getDay()===1){ [g.g1,g.g1n].filter(Boolean).forEach(id=>{ if(enVac(id,key(addDays(d,-1)))) w.push(ini(id)+' revient de vacances : pas de nuit le lundi.'); }); }
-  const next=D.gardes[key(addDays(d,1))]; if(next){ const nn=[next.g1,next.g1j,next.g1n,next.g2].filter(Boolean); [g.g1,g.g1n].filter(Boolean).forEach(id=>{ if(nn.includes(id)) w.push(ini(id)+' fait la nuit et travaille aussi le lendemain.'); }); }
+  const next=GG[key(addDays(d,1))]; if(next){ const nn=[next.g1,next.g1j,next.g1n,next.g2].filter(Boolean); [g.g1,g.g1n].filter(Boolean).forEach(id=>{ if(nn.includes(id)) w.push(ini(id)+' fait la nuit et travaille aussi le lendemain.'); }); }
   return w;
 }
 function ordreDefaut(k){
@@ -1260,11 +1260,11 @@ function gardeRowsHtml(g, split){
     : `<div class="row"><span class="pill g1">G1</span><select data-r="g1">${opts(g.g1||g.g1j,true)}</select></div>`)
     +`<div class="row"><span class="pill g2">G2</span><select data-r="g2">${opts(g.g2,true)}</select></div>`;
 }
-function gardeEdHtml(k, g){
+function gardeEdHtml(k, g, GG=D.gardes){
   const split=!!(g.g1j||g.g1n);
   return `<div class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></div>
       <div class="rows">${gardeRowsHtml(g,split)}</div>
-      <div class="msgs">${(D.gardes[k]?checkGarde(k,g):[]).map(x=>`<div class="warn">${x}</div>`).join('')}</div>`;
+      <div class="msgs">${(GG[k]?checkGarde(k,g,GG):[]).map(x=>`<div class="warn">${x}</div>`).join('')}</div>`;
 }
 function enregistrerGarde(k,g,opts={}){
   const avant=D.gardes[k]?JSON.parse(JSON.stringify(D.gardes[k])):null; Store.setGarde(k,g);
@@ -1273,15 +1273,19 @@ function enregistrerGarde(k,g,opts={}){
   Store.log(`Garde ${k} : ${gTxt(g)}${avant?' (avant : '+gTxt(avant)+')':''}`); toast('Garde enregistrée');
   if(!opts.sansVersion && JSON.stringify(avant)!==JSON.stringify(g)) consignerModif(k, avant, g);
 }
-function bindGardeEd(ed,k,onDone){
+function bindGardeEdBase(ed,k,GG){
   const read=()=>{ const g={}; ed.querySelectorAll('.rows select').forEach(s=>{ if(s.value) g[s.dataset.r]=s.value; }); return g; };
-  const refresh=()=>{ const g=read(); ed.querySelector('.msgs').innerHTML=checkGarde(k,g).map(x=>`<div class="warn">${x}</div>`).join(''); const complete=(g.g1||(g.g1j&&g.g1n))&&g.g2; ed.querySelector('[data-a=save]').disabled=!complete; ed.classList.toggle('dirty',JSON.stringify(g)!==JSON.stringify(D.gardes[k]||{})); };
+  const refresh=()=>{ const g=read(); ed.querySelector('.msgs').innerHTML=checkGarde(k,g,GG).map(x=>`<div class="warn">${x}</div>`).join(''); const complete=(g.g1||(g.g1j&&g.g1n))&&g.g2; ed.querySelector('[data-a=save]').disabled=!complete; ed.classList.toggle('dirty',JSON.stringify(g)!==JSON.stringify(GG[k]||{})); };
   ed.querySelectorAll('.rows select').forEach(s=>s.onchange=refresh);
   ed.querySelectorAll('.seg2 button').forEach(b=>b.onclick=()=>{
     const g=read(); const rows=ed.querySelector('.rows');
     rows.innerHTML=gardeRowsHtml(g, b.dataset.m==='12');
     ed.querySelectorAll('.seg2 button').forEach(x=>x.setAttribute('aria-pressed',x===b)); rows.querySelectorAll('select').forEach(s=>s.onchange=refresh); refresh();
   });
+  return read;
+}
+function bindGardeEd(ed,k,onDone){
+  const read=bindGardeEdBase(ed,k,D.gardes);
   ed.querySelector('[data-a=save]').onclick=()=>{ enregistrerGarde(k,read()); onDone(); };
   ed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Effacer la garde du ${fmtLong(parse(k))}?`,()=>{ const avant=D.gardes[k]?JSON.parse(JSON.stringify(D.gardes[k])):null; Store.setGarde(k,null); Store.setChoix(k,null); Store.log(`Garde ${k} effacée`); if(avant) consignerModif(k, avant, null); onDone(); });
 }
@@ -1710,7 +1714,7 @@ function genererSalles(G, ctx){
 
 // ---- interface
 const genCut=()=> gen.passe ? new Date(1970,0,1) : TODAY;
-let gen={sort:{k:'ini',d:1}, details:false, filtre:'', openMods:new Set(), apercu:'semaine', passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
+let gen={sort:{k:'ini',d:1}, details:false, filtre:'', openMods:new Set(), apercu:'semaine', editDay:null, passe:false, trim:null, weeks:new Set(), etapes:{fds:true,sem:true,salles:true}, running:false, stop:false, seed:'', prog:null, result:null, pending:null};
 function gestGenerateur(box){
   if(!gen.trim){ const t=trimestreDe(TODAY); gen.trim=t.id; gen.weeks=new Set(semainesDe(t.id).filter(mk=>addDays(parse(mk),6)>genCut())); }
   const [tnom]=[trimestreDe(parse(semainesDe(gen.trim)[0])).nom];
@@ -1751,11 +1755,17 @@ function gestGenerateur(box){
   document.getElementById('gStop').onclick=()=>{ gen.stop=true; };
   const u=document.getElementById('gUndo'); if(u) u.onclick=annulerGeneration;
   const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration);
-  const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; renderGest(); };
+  const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; gen.editDay=null; renderGest(); };
   box.querySelectorAll('[data-gopen]').forEach(b=>b.onclick=()=>ouvrirGeneration(b.dataset.gopen));
   box.querySelectorAll('[data-gmods]').forEach(b=>b.onclick=()=>{ const id=b.dataset.gmods; gen.openMods.has(id)?gen.openMods.delete(id):gen.openMods.add(id); renderGest(); });
   box.querySelectorAll('[data-gundo]').forEach(b=>b.onclick=()=>{ const [vid,i]=b.dataset.gundo.split('|'); annulerModif(vid,+i); });
   box.querySelectorAll('[data-gedit]').forEach(b=>b.onclick=()=>{ gCursor=parse(b.dataset.gedit); gTab='horaire'; renderGest(); });
+  box.querySelectorAll('[data-gday]').forEach(b=>b.onclick=()=>{ gen.editDay=b.dataset.gday; renderGest(); });
+  box.querySelectorAll('[data-gweek]').forEach(c=>c.onclick=()=>{ gen.apercu='semaine'; gen.pending.cursor=parse(c.dataset.gweek); renderGest(); });
+  const bed=box.querySelector('#gRapport .ed[data-k]'); if(bed && gen.pending){ const k=bed.dataset.k; const read=bindGardeEdBase(bed,k,gen.pending.G);
+    bed.querySelector('[data-a=save]').onclick=()=>{ modifierBrouillon(k,read()); gen.editDay=null; renderGest(); };
+    bed.querySelector('[data-a=cancel]').onclick=()=>{ gen.editDay=null; renderGest(); };
+    bed.querySelector('[data-a=clear]').onclick=()=>confirmBox(`Retirer la garde du ${fmtLong(parse(k))} de ce brouillon?`,()=>{ modifierBrouillon(k,null); gen.editDay=null; renderGest(); }); }
   box.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>confirmBox('Supprimer cet horaire généré de la mémoire? Le tableau de garde n\'est pas touché.',()=>{ if(gen.pending&&gen.pending.genId===b.dataset.gdel) gen.pending=null; Store.delGeneration(b.dataset.gdel); Store.log('Horaire généré supprimé de la mémoire'); renderGest(); }));
   const gd=document.getElementById('gDet'); if(gd) gd.onclick=()=>{ gen.details=!gen.details; renderGest(); };
   const gf=document.getElementById('gFil'); if(gf) gf.onchange=()=>{ gen.filtre=gf.value; renderGest(); };
@@ -1843,7 +1853,7 @@ function apercuMoisHtml(p){
     const g=(k in p.G)?p.G[k]:D.gardes[k]; const chg=p.changed.includes(k);
     const cls=['cell',d.getMonth()!==m?'out':'',isFds(d)?'fds':'',FERIES.has(k)?'ferie':'',chg?'chg':'',(!inGen.has(k)&&d.getMonth()===m)?'hors':'',k===key(TODAY)?'today':''].join(' ');
     const eq=g?`<span class="ini">${g.g1?`<span class="l"><span class="k g1">G1</span>${ini(g.g1)}</span>`:`<span class="l"><span class="k g1">J</span>${ini(g.g1j)}</span><span class="l"><span class="k g1">N</span>${ini(g.g1n)}</span>`}<span class="l"><span class="k g2">G2</span>${ini(g.g2)}</span></span>`:'';
-    h+=`<div class="${cls}"><span class="num">${d.getDate()}</span>${eq}</div>`; }
+    h+=`<div class="${cls}" data-gweek="${key(monday(d))}" style="cursor:pointer" title="Voir cette semaine"><span class="num">${d.getDate()}</span>${eq}</div>`; }
   return h+`</div>`;
 }
 function apercuHtml(p){
@@ -1857,7 +1867,11 @@ function apercuHtml(p){
   else {
     h+=`<div class="gnav"><button id="gaPrev" ${i<=0?'disabled':''}>‹</button><div class="title">${gTitle(mon)}</div><button id="gaNext" ${i>=weeks.length-1?'disabled':''}>›</button><span class="meta">semaine ${i+1} de ${weeks.length} · les jours modifiés sont encadrés en orange</span>${rec&&rec.statut==='publiee'?`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire pour changer les G1 et G2; chaque modification est consignée et annulable">Modifier cette semaine</button>`:''}</div>
     <div class="week nome">`;
-    for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k); h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}</div>`; }
+    const brouillon=!rec||rec.statut!=='publiee';
+    for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k);
+      if(brouillon && gen.editDay===k){ const g=p.G[k]||{}; const dd=parse(k);
+        h+=`<div class="ed${isFds(dd)?' fds':''}" data-k="${k}" style="border-color:var(--g2)"><h3>${JOURS[dd.getDay()]} ${dd.getDate()}<small>brouillon</small></h3>${gardeEdHtml(k,g,p.G)}<div class="actions"><button class="btn sm" data-a="cancel">Annuler</button><button class="btn sm" data-a="clear" ${p.G[k]?'':'disabled'}>Effacer</button><button class="btn sm primary" data-a="save" disabled>Enregistrer</button></div></div>`; continue; }
+      h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}<div class="actions" style="justify-content:center;margin-top:2px">${brouillon?`<button class="btn sm" data-gday="${k}" title="Changer les G1 et G2 de ce jour dans le brouillon">Modifier</button>`:`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire">Modifier dans Horaire</button>`}</div></div>`; }
     h+=`</div>`;
   }
   return h+`${rapportHtml(p.rapport)}</section>`;
@@ -1882,11 +1896,36 @@ function consignerModif(k, avant, apres){
 }
 function annulerModif(vid, i){
   const v=(D.generations||[]).find(x=>x.id===vid); const m=v&&v.modifs&&v.modifs[i]; if(!m||m.annulee) return;
+  if(v.statut==='brouillon'){ // brouillon : on revient en arrière dans la version, le tableau n'est pas touché
+    if(JSON.stringify(v.G[m.k]||null)!==JSON.stringify(m.apres)) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
+    m.annulee=true; m.annuleeA=now().toISOString(); if(m.avant) v.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else v.G[m.k]=null;
+    v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
+    if(gen.pending&&gen.pending.genId===v.id){ const p=gen.pending; if(m.avant) p.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else delete p.G[m.k]; p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort(); }
+    toast('Modification annulée'); renderGest(); return; }
   if(JSON.stringify(D.gardes[m.k]||null)!==JSON.stringify(m.apres)) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
   if(m.avant) enregistrerGarde(m.k, m.avant, {sansVersion:true});
   else { Store.setGarde(m.k,null); Store.setChoix(m.k,null); Store.log(`Garde ${m.k} effacée (annulation d'une modification)`); }
   m.annulee=true; m.annuleeA=now().toISOString(); v.G[m.k]=m.avant?JSON.parse(JSON.stringify(m.avant)):null; v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
   toast('Modification annulée'); renderGest();
+}
+// --- modification d'un brouillon dans l'aperçu : l'original reste intact, une version modifiée (brouillon) reçoit les changements
+function versionBrouillon(p){
+  const L=D.generations||[]; const cur=L.find(x=>x.id===p.genId); if(!cur) return null;
+  if(cur.origine||cur.manuel) return cur;
+  let v=L.find(x=>x.origine===cur.id&&x.statut==='brouillon'); if(v) return v;
+  v={id:uuid(), trim:cur.trim, creeA:now().toISOString(), par:me||'', statut:'brouillon', publieeA:null, publieePar:null, note:'', origine:cur.id, seed:cur.seed, score:cur.score, trous:cur.trous, nG:cur.nG, nC:cur.nC, weeks:[...(cur.weeks||[])], etapes:cur.etapes, G:JSON.parse(JSON.stringify(cur.G||{})), salles:JSON.parse(JSON.stringify(cur.salles||{})), touched:[...(cur.touched||[])], changed:[], rapport:cur.rapport, modifs:[]};
+  return v;
+}
+function modifierBrouillon(k, g){
+  const p=gen.pending; if(!p) return; const v=versionBrouillon(p); if(!v) return;
+  const avant=p.G[k]?JSON.parse(JSON.stringify(p.G[k])):null; if(JSON.stringify(avant)===JSON.stringify(g)) return;
+  v.modifs=v.modifs||[]; v.modifs.push({t:now().toISOString(), par:me||'', k, avant, apres:g?JSON.parse(JSON.stringify(g)):null});
+  v.G[k]=g?JSON.parse(JSON.stringify(g)):null; if(!v.touched.includes(k)) v.touched.push(k);
+  if(v.salles[k]){ if(g){ const c=v.salles[k]; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); v.salles[k]={...c,ordre:[...top,...rest],nuit:g.g1n||null}; } else delete v.salles[k]; }
+  v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
+  if(g) p.G[k]=JSON.parse(JSON.stringify(g)); else delete p.G[k]; if(!p.touched.includes(k)) p.touched.push(k); p.salles=v.salles; p.genId=v.id; p.rapport=v.rapport;
+  p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort();
+  Store.log(`Brouillon modifié : garde ${k} → ${g?gTxtFull(g):'aucune'}`); toast('Brouillon modifié');
 }
 const gLbl=g=>g?gTxtFull(g):'—';
 function modifsHtml(v){
@@ -1898,8 +1937,8 @@ function historiqueHtml(){
   const nomTrim=tr=>{ try{ return trimestreDe(parse(semainesDe(tr)[0])).nom; }catch(e){ return tr; } };
   const st=g=>{ const n=(g.modifs||[]).filter(m=>!m.annulee).length; const mod=(g.origine||g.manuel)?` <span class="tag resp">${n} modification${n>1?'s':''}</span> <button class="btn sm" data-gmods="${g.id}">${gen.openMods.has(g.id)?'Masquer':'Détails'}</button>`:'';
     if(g.statut==='publiee') return `<span class="tag t24">${g.manuel?'En vigueur':'Publié le '+fmtDT(g.publieeA)+(g.publieePar?' par '+ini(g.publieePar):'')}</span>`+mod;
-    if(g.statut==='annulee') return `<span class="tag resp">Publié puis annulé</span>`; return `<span class="tag">Brouillon</span>`; };
-  const lbl=g=>nomTrim(g.trim)+(g.origine?' <small style="color:var(--muted)">version modifiée de l\'horaire du '+fmtDT((L.find(x=>x.id===g.origine)||{}).creeA)+'</small>':(g.manuel?' <small style="color:var(--muted)">modifications manuelles</small>':''));
+    if(g.statut==='annulee') return `<span class="tag resp">Publié puis annulé</span>`; return `<span class="tag">Brouillon</span>`+mod; };
+  const lbl=g=>nomTrim(g.trim)+(g.origine?' <small style="color:var(--muted)">version modifiée '+(g.statut==='brouillon'?'du brouillon':'de l\'horaire')+' du '+fmtDT((L.find(x=>x.id===g.origine)||{}).creeA)+'</small>':(g.manuel?' <small style="color:var(--muted)">modifications manuelles</small>':''));
   return `<section class="rap"><h2>Horaires générés <small>conservés en mémoire pour les responsables; un brouillon n'est pas visible des membres tant qu'il n'est pas publié</small></h2>
     <div class="tblwrap"><table class="stat"><thead><tr><th>Généré le</th><th>Trimestre</th><th class="n">Semaines</th><th class="n">Jours</th><th class="n">Score</th><th class="n">Trous</th><th>Statut</th><th></th></tr></thead><tbody>
     ${L.map(g=>`<tr${gen.pending&&gen.pending.genId===g.id?' style="font-weight:700"':''}><td>${fmtDT(g.creeA)}${g.par?' <span class="meta">'+ini(g.par)+'</span>':''}</td><td>${lbl(g)}</td><td class="n">${(g.weeks||[]).length||'—'}</td><td class="n">${g.nG||0}</td><td class="n">${g.score??'—'}</td><td class="n">${g.trous||0}</td><td>${st(g)}</td><td style="white-space:nowrap"><button class="btn sm" data-gopen="${g.id}">Ouvrir</button> <button class="btn sm" data-gdel="${g.id}">Supprimer</button></td></tr>${gen.openMods.has(g.id)?modifsHtml(g):''}`).join('')}
