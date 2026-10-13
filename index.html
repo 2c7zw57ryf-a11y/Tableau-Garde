@@ -309,6 +309,10 @@ main{padding:14px;max-width:1500px;margin:0 auto}
 .gpick .pickrow.bad .ptag{background:var(--g2-soft);color:var(--g2-ink)}
 .gpick .pickrow.role .ptag{background:var(--g1-soft);color:var(--g1-ink)}
 .gpick .pickrow.cur{opacity:.5;cursor:default}
+.gpick .ol li.aplacer{border-color:var(--g2);background:var(--g2-soft);color:var(--g2-ink)}
+.gpick .ol li .meta{margin:0;font-size:12px}
+.gpick .effets{font-size:13px;color:var(--ink);background:var(--panel);border-radius:var(--r-sm);padding:6px 9px;line-height:1.45}
+.gpick .effets b{color:var(--g2-ink)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;z-index:40;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
 /* ---------- échanges ---------- */
@@ -1776,7 +1780,7 @@ function gestGenerateur(box){
   document.getElementById('gRunFull').onclick=()=>{ gen.full=true; lancerGeneration(); };
   document.getElementById('gStop').onclick=()=>{ gen.stop=true; };
   const u=document.getElementById('gUndo'); if(u) u.onclick=annulerGeneration;
-  const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>{ const inc=gen.pending.touched.filter(k=>{ const g=gen.pending.G[k]; return g && !((g.g1||(g.g1j&&g.g1n))&&g.g2); }); if(inc.length) return toast(`Brouillon incomplet : ${inc.length} jour(s) sans équipe complète (${fmtLong(parse(inc[0]))}${inc.length>1?'…':''})`); confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration); };
+  const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>{ const inc=gen.pending.touched.filter(k=>{ const g=gen.pending.G[k]; return g && !((g.g1||(g.g1j&&g.g1n))&&g.g2); }); if(inc.length) return toast(`Brouillon incomplet : ${inc.length} jour(s) sans équipe complète (${fmtLong(parse(inc[0]))}${inc.length>1?'…':''})`); const apl=Object.keys(gen.pending.aPlacer||{}).filter(k=>(gen.pending.aPlacer[k]||[]).length); if(apl.length) return toast(`Brouillon incomplet : personne(s) à placer dans l'ordre de choix le ${fmtLong(parse(apl.sort()[0]))}${apl.length>1?' et '+(apl.length-1)+' autre(s) jour(s)':''}`); confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration); };
   const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; gen.editDay=null; renderGest(); };
   box.querySelectorAll('[data-gopen]').forEach(b=>b.onclick=()=>ouvrirGeneration(b.dataset.gopen));
   box.querySelectorAll('[data-gmods]').forEach(b=>b.onclick=()=>{ const id=b.dataset.gmods; gen.openMods.has(id)?gen.openMods.delete(id):gen.openMods.add(id); renderGest(); });
@@ -1856,6 +1860,8 @@ function appliquerGeneration(){
   p.touched.forEach(k=>{ const a=JSON.stringify(D.gardes[k]||null), b=JSON.stringify(p.G[k]||null); if(a!==b){ Store.setGarde(k,p.G[k]||null); nG++; if(!p.G[k]) Store.setChoix(k,null); } });
   if(p.ctx.etapes.salles){ for(const k in p.salles){ if(JSON.stringify(D.choix[k])!==JSON.stringify(p.salles[k])){ Store.setChoix(k,p.salles[k]); nC++; } } }
   else { p.touched.forEach(k=>{ const c=D.choix[k], g=p.G[k]; if(!c||!g) return; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); Store.setChoix(k,{...c,ordre:[...top,...rest],nuit:g.g1n||null}); }); }
+  (p.vacs||[]).forEach(x=>{ if(x.from){ const out=[]; D.vacances.forEach(vv=>{ if(vv.membre!==x.from || vv.debut>x.k || vv.fin<x.k){ out.push(vv); return; } if(vv.debut<x.k) out.push({...vv,id:uuid(),fin:key(addDays(parse(x.k),-1))}); if(vv.fin>x.k) out.push({...vv,id:uuid(),debut:key(addDays(parse(x.k),1))}); }); D.vacances=out; }
+    if(x.to && !enVac(x.to,x.k)) D.vacances.push({id:uuid(),membre:x.to,debut:x.k,fin:x.k,motif:'Déplacé (horaire)'}); });
   D.lastGen={t:now().toISOString(), avant, rapport:p.rapport, journalLen:(D.journal||[]).length, genId:p.genId||null}; Store.save();
   if(p.genId){ const rec=(D.generations||[]).find(x=>x.id===p.genId); if(rec){ rec.statut='publiee'; rec.publieeA=now().toISOString(); rec.publieePar=me||''; Store.saveGeneration(rec); } }
   Store.log(`Génération ${trimestreDe(parse(p.ctx.mondays[0])).nom} appliquée : ${nG} jour(s) de garde, ${nC} ordre(s) de salle, score ${p.rapport.score}, graine ${p.rapport.seed}, ${p.rapport.essais} essais`);
@@ -1888,7 +1894,8 @@ function apercuHtml(p){
     <div class="week nome">`;
     const brouillon=!rec||rec.statut!=='publiee';
     for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k);
-      h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}<div class="actions" style="justify-content:center;margin-top:2px">${brouillon?`<button class="btn sm" data-gday="${k}" title="Changer les G1 et G2 de ce jour dans le brouillon">Modifier</button>`:`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire">Modifier dans Horaire</button>`}</div></div>`; }
+      const apl=((p.aPlacer||{})[k]||[]);
+      h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}${apl.length?`<div class="warn" style="margin-top:4px">À placer : ${apl.map(ini).join(', ')}</div>`:''}<div class="actions" style="justify-content:center;margin-top:2px">${brouillon?`<button class="btn sm" data-gday="${k}" title="Changer les G1 et G2 de ce jour dans le brouillon">Modifier</button>`:`<button class="btn sm" data-gedit="${key(mon)}" title="Ouvre cette semaine dans l'onglet Horaire">Modifier dans Horaire</button>`}</div></div>`; }
     h+=`</div>`;
   }
   return h+`${rapportHtml(p.rapport)}</section>`;
@@ -1914,10 +1921,13 @@ function consignerModif(k, avant, apres){
 function annulerModif(vid, i){
   const v=(D.generations||[]).find(x=>x.id===vid); const m=v&&v.modifs&&v.modifs[i]; if(!m||m.annulee) return;
   if(v.statut==='brouillon'){ // brouillon : on revient en arrière dans la version, le tableau n'est pas touché
-    if(JSON.stringify(v.G[m.k]||null)!==JSON.stringify(m.apres)) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
-    m.annulee=true; m.annuleeA=now().toISOString(); if(m.avant) v.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else v.G[m.k]=null;
-    v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
-    if(gen.pending&&gen.pending.genId===v.id){ const p=gen.pending; if(m.avant) p.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else delete p.G[m.k]; p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort(); }
+    const plusRecente=v.modifs.slice(i+1).some(x=>!x.annulee && x.jours && m.jours && x.jours.some(j=>m.jours.includes(j)));
+    if(plusRecente) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
+    const p=(gen.pending&&gen.pending.genId===v.id)?gen.pending:null;
+    if(m.etat&&m.etat.avant) restaurerBrouillon(p,v,m.etat.avant);
+    else { if(m.avant) v.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else v.G[m.k]=null; if(p){ if(m.avant) p.G[m.k]=JSON.parse(JSON.stringify(m.avant)); else delete p.G[m.k]; } }
+    m.annulee=true; m.annuleeA=now().toISOString(); v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
+    if(p) p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort();
     toast('Modification annulée'); renderGest(); return; }
   if(JSON.stringify(D.gardes[m.k]||null)!==JSON.stringify(m.apres)) return toast('Ce jour a été modifié depuis : annulez d\'abord la modification la plus récente');
   if(m.avant) enregistrerGarde(m.k, m.avant, {sansVersion:true});
@@ -1930,42 +1940,120 @@ function versionBrouillon(p){
   const L=D.generations||[]; const cur=L.find(x=>x.id===p.genId); if(!cur) return null;
   if(cur.origine||cur.manuel) return cur;
   let v=L.find(x=>x.origine===cur.id&&x.statut==='brouillon'); if(v) return v;
-  v={id:uuid(), trim:cur.trim, creeA:now().toISOString(), par:me||'', statut:'brouillon', publieeA:null, publieePar:null, note:'', origine:cur.id, seed:cur.seed, score:cur.score, trous:cur.trous, nG:cur.nG, nC:cur.nC, weeks:[...(cur.weeks||[])], etapes:cur.etapes, G:JSON.parse(JSON.stringify(cur.G||{})), salles:JSON.parse(JSON.stringify(cur.salles||{})), touched:[...(cur.touched||[])], changed:[], rapport:cur.rapport, modifs:[]};
+  v={id:uuid(), trim:cur.trim, creeA:now().toISOString(), par:me||'', statut:'brouillon', publieeA:null, publieePar:null, note:'', origine:cur.id, seed:cur.seed, score:cur.score, trous:cur.trous, nG:cur.nG, nC:cur.nC, weeks:[...(cur.weeks||[])], etapes:cur.etapes, G:JSON.parse(JSON.stringify(cur.G||{})), salles:JSON.parse(JSON.stringify(cur.salles||{})), touched:[...(cur.touched||[])], changed:[], rapport:cur.rapport, modifs:[], aPlacer:JSON.parse(JSON.stringify(cur.aPlacer||{})), vacs:JSON.parse(JSON.stringify(cur.vacs||[]))};
   return v;
 }
-function modifierBrouillon(k, g){
-  const p=gen.pending; if(!p) return; const v=versionBrouillon(p); if(!v) return;
-  const avant=p.G[k]?JSON.parse(JSON.stringify(p.G[k])):null; if(JSON.stringify(avant)===JSON.stringify(g)) return;
-  v.modifs=v.modifs||[]; v.modifs.push({t:now().toISOString(), par:me||'', k, avant, apres:g?JSON.parse(JSON.stringify(g)):null});
-  v.G[k]=g?JSON.parse(JSON.stringify(g)):null; if(!v.touched.includes(k)) v.touched.push(k);
-  if(v.salles[k]){ if(g){ const c=v.salles[k]; const top=[g.g1||g.g1j,g.g2].filter(Boolean); const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); v.salles[k]={...c,ordre:[...top,...rest],nuit:g.g1n||null}; } else delete v.salles[k]; }
+// état d'un brouillon autour d'un jour (pour consigner et annuler) : garde, ordres de salle du jour et du lendemain, personnes à placer, vacances
+function etatBrouillon(p,v,k,kn){ const s=x=>x===undefined||x===null?null:JSON.parse(JSON.stringify(x));
+  return {G:{[k]:s(p.G[k])}, salles:{[k]:s(p.salles[k]),[kn]:s(p.salles[kn])}, aPlacer:{[k]:[...((v.aPlacer||{})[k]||[])],[kn]:[...((v.aPlacer||{})[kn]||[])]}, vacs:s(v.vacs||[])}; }
+function restaurerBrouillon(p,v,e){
+  for(const k in e.G){ if(e.G[k]){ v.G[k]=JSON.parse(JSON.stringify(e.G[k])); if(p) p.G[k]=JSON.parse(JSON.stringify(e.G[k])); } else { v.G[k]=null; if(p) delete p.G[k]; } }
+  for(const k in e.salles){ if(e.salles[k]) v.salles[k]=JSON.parse(JSON.stringify(e.salles[k])); else delete v.salles[k]; }
+  v.aPlacer=v.aPlacer||{}; for(const k in e.aPlacer){ if(e.aPlacer[k].length) v.aPlacer[k]=[...e.aPlacer[k]]; else delete v.aPlacer[k]; }
+  v.vacs=JSON.parse(JSON.stringify(e.vacs||[])); v.nG=Object.keys(v.G).filter(x=>v.G[x]).length;
+  if(p){ p.salles=v.salles; p.aPlacer=v.aPlacer; p.vacs=v.vacs; p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort(); }
+}
+function preparerVersion(p){ const v=versionBrouillon(p); if(!v) return null; v.aPlacer=v.aPlacer||{}; v.vacs=v.vacs||[]; v.modifs=v.modifs||[]; p.salles=v.salles; p.aPlacer=v.aPlacer; p.vacs=v.vacs; p.genId=v.id; p.rapport=v.rapport; return v; }
+function sallesDuJour(p,k){ if(p.salles[k]) return p.salles[k]; const c=D.choix[k]; if(!c) return null; p.salles[k]=JSON.parse(JSON.stringify(c)); return p.salles[k]; }
+function consignerBrouillon(v,p,k,kn,kind,avant,apres,eAvant,effets){
+  v.modifs.push({t:now().toISOString(), par:me||'', k, kind, avant, apres, jours:[k,kn], effets, etat:{avant:eAvant, apres:etatBrouillon(p,v,k,kn)}});
   v.nG=Object.keys(v.G).filter(x=>v.G[x]).length; Store.saveGeneration(v);
-  if(g) p.G[k]=JSON.parse(JSON.stringify(g)); else delete p.G[k]; if(!p.touched.includes(k)) p.touched.push(k); p.salles=v.salles; p.genId=v.id; p.rapport=v.rapport;
+  if(!p.touched.includes(k)) p.touched.push(k); if(p.salles[kn]&&!p.touched.includes(kn)) p.touched.push(kn);
   p.changed=[...p.touched].filter(x=>JSON.stringify(D.gardes[x]||null)!==JSON.stringify(p.G[x]||null)).sort();
+}
+// changement de G1/G2 dans un brouillon : l'arrivant libère sa place, le partant la prend; sinon le partant est « à placer ».
+// Si la nuit change de mains, le post-garde du lendemain suit et la place libérée revient à l'ancien de nuit s'il est disponible.
+function modifierBrouillon(k, g){
+  const p=gen.pending; if(!p) return; const v=preparerVersion(p); if(!v) return;
+  const avant=p.G[k]?JSON.parse(JSON.stringify(p.G[k])):null; if(JSON.stringify(avant)===JSON.stringify(g)) return;
+  const kn=key(addDays(parse(k),1)); const eAvant=etatBrouillon(p,v,k,kn); const effets=[]; const roles=['g1','g1j','g1n','g2'];
+  const g0=avant||{}, g1=g||{}; const anciens=roles.map(r=>g0[r]).filter(Boolean), nouveaux=roles.map(r=>g1[r]).filter(Boolean);
+  const arrivants=nouveaux.filter(id=>!anciens.includes(id)), partants=anciens.filter(id=>!nouveaux.includes(id));
+  const dk=fmtLong(parse(k)), dn=fmtLong(parse(kn));
+  if(g) p.G[k]=JSON.parse(JSON.stringify(g)); else delete p.G[k]; v.G[k]=g?JSON.parse(JSON.stringify(g)):null;
+  if(g){
+    const c=sallesDuJour(p,k);
+    if(c){
+      const rest=c.ordre.slice(2).filter(id=>!nouveaux.includes(id)); const libres=[];
+      arrivants.forEach(id=>{ const i=c.ordre.indexOf(id); if(i>=2) libres.push(i-2);
+        if(c.absents.includes(id)){ c.absents=c.absents.filter(x=>x!==id); v.vacs=v.vacs.filter(x=>!(x.k===k&&x.to===id)); if(enVac(id,k)){ v.vacs.push({k,from:id}); effets.push(`${ini(id)} était en vacances le ${dk} : cette journée de vacances sera annulée à la publication.`); } }
+        if(c.postGarde.includes(id)){ c.postGarde=c.postGarde.filter(x=>x!==id); effets.push(`${ini(id)} était en post-garde le ${dk}.`); } });
+      libres.sort((a,b)=>a-b);
+      partants.forEach((id,j)=>{ v.aPlacer[k]=(v.aPlacer[k]||[]).filter(x=>x!==id);
+        if(j<libres.length){ const pos=Math.min(libres[j],rest.length); rest.splice(pos,0,id); effets.push(`${ini(id)} prend la place de ${ini(arrivants[j])} dans l'ordre de choix du ${dk} (${pos+3}e).`); }
+        else { v.aPlacer[k]=[...(v.aPlacer[k]||[]),id]; effets.push(`<b>${ini(id)} n'a plus de place dans l'ordre de choix du ${dk} : à placer à la main, ou en vacances.</b>`); } });
+      if(!v.aPlacer[k]||!v.aPlacer[k].length) delete v.aPlacer[k];
+      c.ordre=[g1.g1||g1.g1j||'', g1.g2||'', ...rest]; c.nuit=g1.g1n||null;
+    }
+  } else { delete p.salles[k]; delete v.aPlacer[k]; if(partants.length) effets.push(`Garde du ${dk} retirée : ${partants.map(ini).join(', ')} ne sont plus de garde ce jour-là.`); }
+  // lendemain : post-garde
+  const n0=g0.g1||g0.g1n||null, n1=g1.g1||g1.g1n||null;
+  if(n0!==n1){
+    const cn=sallesDuJour(p,kn); const gn=p.G[kn]||D.gardes[kn]; const onCall=id=>!!gn&&roles.some(r=>gn[r]===id);
+    if(cn){
+      if(n0) cn.postGarde=cn.postGarde.filter(x=>x!==n0);
+      if(n1&&!cn.postGarde.includes(n1)&&!onCall(n1)) cn.postGarde.push(n1);
+      const i1=n1?cn.ordre.indexOf(n1):-1;
+      const n0dispo=!!n0 && !onCall(n0) && !cn.ordre.includes(n0) && !enVac(n0,kn) && !cn.absents.includes(n0);
+      if(i1>=2){ if(n0dispo){ cn.ordre[i1]=n0; effets.push(`Lendemain ${dn} : ${ini(n1)} passe en post-garde et libère sa ${i1+1}e place, que ${ini(n0)} reprend.`); }
+                 else { cn.ordre.splice(i1,1); effets.push(`Lendemain ${dn} : ${ini(n1)} passe en post-garde et libère sa ${i1+1}e place; personne ne la reprend${n0?' ('+ini(n0)+' n\'est pas disponible)':''}, les suivants remontent d'un cran.`); } }
+      else if(n1&&cn.postGarde.includes(n1)) effets.push(`Lendemain ${dn} : ${ini(n1)} passe en post-garde.`);
+      if(n0 && n0dispo && i1<2){ v.aPlacer[kn]=[...(v.aPlacer[kn]||[]),n0]; effets.push(`<b>Lendemain ${dn} : ${ini(n0)} n'est plus en post-garde mais n'a pas de place dans l'ordre de choix : à placer à la main.</b>`); }
+      cn.postGarde.sort();
+    } else if(n1) effets.push(`Lendemain ${dn} : ${ini(n1)} sera en post-garde.`);
+  }
+  consignerBrouillon(v,p,k,kn,'garde',avant,g?JSON.parse(JSON.stringify(g)):null,eAvant,effets);
   Store.log(`Brouillon modifié : garde ${k} → ${g?gTxtFull(g):'aucune'}`); toast('Brouillon modifié');
+}
+// réordonner l'ordre de choix d'un jour dans le brouillon (glisser-déposer ou placement d'un « à placer »)
+function modifierOrdreBrouillon(k, rest, txt){
+  const p=gen.pending; if(!p) return; const v=preparerVersion(p); if(!v) return; const c=sallesDuJour(p,k); if(!c) return;
+  const kn=key(addDays(parse(k),1)); const eAvant=etatBrouillon(p,v,k,kn); const avant=c.ordre.slice(2);
+  c.ordre=[...c.ordre.slice(0,2), ...rest]; c.absents=c.absents.filter(id=>!rest.includes(id));
+  if(v.aPlacer[k]){ v.aPlacer[k]=v.aPlacer[k].filter(id=>!rest.includes(id)); if(!v.aPlacer[k].length) delete v.aPlacer[k]; }
+  consignerBrouillon(v,p,k,kn,'ordre',avant,rest,eAvant,[txt||`Ordre de choix du ${fmtLong(parse(k))} réordonné.`]);
+  toast('Ordre de choix modifié');
+}
+// mettre une personne en vacances ce jour-là dans le brouillon (journée d'absence créée à la publication)
+function placerVacances(k, id){
+  const p=gen.pending; if(!p) return; const v=preparerVersion(p); if(!v) return; const c=sallesDuJour(p,k);
+  const kn=key(addDays(parse(k),1)); const eAvant=etatBrouillon(p,v,k,kn);
+  if(c){ c.ordre=c.ordre.filter(x=>x!==id); if(!c.absents.includes(id)) c.absents.push(id); }
+  if(!v.vacs.some(x=>x.k===k&&x.to===id)) v.vacs.push({k,to:id});
+  if(v.aPlacer[k]){ v.aPlacer[k]=v.aPlacer[k].filter(x=>x!==id); if(!v.aPlacer[k].length) delete v.aPlacer[k]; }
+  consignerBrouillon(v,p,k,kn,'vac',null,null,eAvant,[`${ini(id)} mis en vacances le ${fmtLong(parse(k))} (journée d'absence créée à la publication).`]);
+  toast(`${ini(id)} en vacances ce jour-là`);
 }
 // --- sélecteur de remplaçant (brouillon) : la journée en évidence, un clic sur un rôle liste tout le monde avec sa place ce jour-là
 function renderPicker(){
   let m=document.getElementById('gPick'); if(m) m.remove();
   const p=gen.pending, k=gen.editDay; if(!p||!k) return;
   const rec=p.genId&&(D.generations||[]).find(x=>x.id===p.genId); if(rec&&rec.statut==='publiee'){ gen.editDay=null; return; }
-  const data={gardes:p.G, choix:{...D.choix, ...p.salles}}; const g=p.G[k]||null; const d=parse(k);
+  const data={gardes:p.G, choix:{...D.choix, ...p.salles}}; const g=p.G[k]||null; const d=parse(k); const c=(k in p.salles)?p.salles[k]:D.choix[k];
+  const aPl=((p.aPlacer||{})[k]||[]);
   const split=!!g&&(('g1j' in g)||('g1n' in g)); const roles=g?(split?['g1j','g1n','g2']:['g1','g2']):[]; const lbl={g1:'G1',g1j:'G1 J',g1n:'G1 N',g2:'G2'};
-  const rolesHtml=`<div class="role">${roles.map(r=>`<span class="pill ${r==='g2'?'g2':'g1'}">${lbl[r]}</span><button class="nm prole${gen.pickRole===r?' on':''}" data-role="${r}" title="Choisir qui prend ce rôle">${g[r]?ini(g[r]):'—'}</button>`).join('')}</div>`;
+  const rolesHtml=g?`<div class="role">${roles.map(r=>`<span class="pill ${r==='g2'?'g2':'g1'}">${lbl[r]}</span><button class="nm prole${gen.pickRole===r?' on':''}" data-role="${r}" title="Choisir qui prend ce rôle">${g[r]?ini(g[r]):'—'}</button>`).join('')}</div>`:`<div class="empty">Aucune garde ce jour dans le brouillon</div>`;
+  let ordreHtml='';
+  if(c&&g){ const b=D.blocs, hb=hbDe(c), n=c.ordre.length;
+    ordreHtml=`<div class="sep"></div><div class="salle"><h4>Ordre de choix de salle <small style="font-weight:400;color:var(--muted)">glissez pour réordonner</small></h4><ol class="ol" data-hb="${hb}">${c.ordre.slice(2).map((id,j)=>{ const i=j+2,pos=i+1; const blk=b.slice(0,-1).some(x=>pos===x+1); const last=isHB(i,n,hb); return `<li class="drag${blk?' blk':''}${last?' hb':''}${c.postGarde.includes(id)?' pg':''}" data-id="${id}"><span class="n">${last?'HB':pos}</span><span class="ini">${ini(id)}</span></li>`; }).join('')}${aPl.map(id=>`<li class="drag aplacer" data-id="${id}"><span class="n">?</span><span class="ini">${ini(id)}</span><span class="meta">à placer</span></li>`).join('')}</ol></div>`;
+    const ret=[]; if(c.nuit) ret.push(`Nuit : <b>${ini(c.nuit)}</b>`); if(c.postGarde.length) ret.push(`Post-garde : <b>${c.postGarde.map(ini).join(', ')}</b>`); if(c.absents.length) ret.push(`Absents : ${c.absents.map(ini).join(', ')}`);
+    if(ret.length) ordreHtml+=`<div class="retrait">${ret.join('<br>')}</div>`; }
   const w=g?checkGarde(k,g,p.G):[]; const incomplete=!!g&&!((g.g1||(g.g1j&&g.g1n))&&g.g2);
+  const effets=(rec&&rec.modifs||[]).filter(mm=>!mm.annulee&&mm.jours&&mm.jours.includes(k)&&mm.effets&&mm.effets.length).slice(-3).flatMap(mm=>mm.effets);
   let list='';
   if(g&&gen.pickRole&&roles.includes(gen.pickRole)){ const r=gen.pickRole, cur=g[r];
-    const rang=pl=>({vac:0,post:1,g1:2,g1j:2.1,g1n:2.2,g2:3,pos:4,off:9})[pl.kind]+(pl.kind==='pos'?pl.pos/1000:0); // vacances d'abord, puis G1, G2, positions de salle jusqu'à la dernière, congés à la fin
+    const rang=pl=>({vac:0,post:1,g1:2,g1j:2.1,g1n:2.2,g2:3,pos:4,off:9})[pl.kind]+(pl.kind==='pos'?pl.pos/1000:0);
     const membres=actifs().map(mm=>({mm,pl:placeDe(k,mm.id,data)})).sort((a,b)=>rang(a.pl)-rang(b.pl)||a.mm.ini.localeCompare(b.mm.ini,'fr'));
-    list=`<div class="pick-list">${membres.map(({mm,pl})=>{ const id=mm.id; const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':placeLbl(pl)}</span></button>`; }).join('')}</div>`; }
+    list=`<div class="pick-list">${membres.map(({mm,pl})=>{ const id=mm.id; const bad=pl.kind==='vac'||pl.kind==='post'; const role=['g1','g1j','g1n','g2'].includes(pl.kind); const isCur=id===cur; const apl=aPl.includes(id); return `<button class="pickrow${bad?' bad':''}${role?' role':''}${isCur?' cur':''}" data-pick="${id}" ${isCur?'disabled':''}><b>${mm.ini}</b><span class="pnom">${mm.nom}</span><span class="ptag">${isCur?'actuel':(apl?'à placer':placeLbl(pl))}</span></button>`; }).join('')}</div>`; }
   m=document.createElement('div'); m.id='gPick'; m.className='modal gpick';
   m.innerHTML=`<div class="box"><div class="pick-head"><b>${fmtLong(d)} ${d.getFullYear()} <small style="color:var(--muted);font-weight:400">brouillon</small></b>${g?`<span class="seg2"><button data-m="24" aria-pressed="${!split}">24 h</button><button data-m="12" aria-pressed="${split}">Fractionné</button></span>`:'<span></span>'}<button class="btn sm" data-a="close" aria-label="Fermer">×</button></div>
-    <div class="pick-body"><div class="pick-left"><div class="pick-card">${g?dayCard(k,{data}):`<article class="day"><div class="body"><div class="empty">Aucune garde ce jour dans le brouillon</div></div></article>`}</div>
-    ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}${g&&!list?'<div class="meta" style="margin:0">Cliquez un nom de rôle dans la carte pour choisir qui le prend.</div>':''}</div>
+    <div class="pick-body"><div class="pick-left"><div class="pick-card"><article class="day${isFds(d)?' fds':''}"><header><div class="dn">${JOURS_C[d.getDay()]} ${d.getDate()}${FERIES.has(k)?'<small>férié</small>':''}</div></header><div class="body">${rolesHtml}${ordreHtml}</div></article></div>
+    ${aPl.length?`<div class="warn">À placer : ${aPl.map(id=>`<b>${ini(id)}</b> <button class="btn sm" data-pl="last|${id}">Dernier de l'ordre</button> <button class="btn sm" data-pl="vac|${id}">Vacances ce jour</button>`).join(' · ')} — ou glissez la personne dans l'ordre.</div>`:''}
+    ${incomplete?'<div class="warn">Garde incomplète : cliquez chaque « — » pour choisir un nom.</div>':''}${w.map(x=>`<div class="warn">${x}</div>`).join('')}
+    ${effets.length?`<div class="effets">${effets.join('<br>')}</div>`:''}</div>
     <div class="pick-right">${list}</div></div>
     <div class="actions">${g?`<button class="btn sm" data-a="clear">Retirer la garde</button>`:`<button class="btn sm" data-a="new24">Créer une garde 24 h</button><button class="btn sm" data-a="new12">Créer une garde fractionnée</button>`}<button class="btn sm primary" data-a="close">Terminer</button></div></div>`;
   document.body.appendChild(m);
-  const role=m.querySelector('.day .role'); if(role) role.outerHTML=rolesHtml;
   const close=()=>{ gen.editDay=null; gen.pickRole=null; renderGest(); };
   m.onclick=e=>{ if(e.target===m) close(); }; m.querySelectorAll('[data-a=close]').forEach(b=>b.onclick=close);
   m.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ gen.pickRole = gen.pickRole===b.dataset.role ? null : b.dataset.role; renderPicker(); });
@@ -1975,11 +2063,13 @@ function renderPicker(){
   const cl=m.querySelector('[data-a=clear]'); if(cl) cl.onclick=()=>confirmBox(`Retirer la garde du ${fmtLong(d)} de ce brouillon?`,()=>{ modifierBrouillon(k,null); gen.pickRole=null; renderGest(); });
   const n24=m.querySelector('[data-a=new24]'); if(n24) n24.onclick=()=>{ modifierBrouillon(k,{g1:'',g2:''}); gen.pickRole='g1'; renderGest(); };
   const n12=m.querySelector('[data-a=new12]'); if(n12) n12.onclick=()=>{ modifierBrouillon(k,{g1j:'',g1n:'',g2:''}); gen.pickRole='g1j'; renderGest(); };
+  const ol=m.querySelector('.ol'); if(ol) bindDrag(ol, order=>{ const cur=(p.salles[k]||D.choix[k]||{ordre:[]}).ordre.slice(2); const placed=aPl.filter(id=>order.includes(id)); if(order.join()!==[...cur,...aPl].join()||placed.length){ modifierOrdreBrouillon(k, order, placed.length?`${placed.map(ini).join(', ')} placé(s) dans l'ordre de choix du ${fmtLong(d)}.`:undefined); renderGest(); } });
+  m.querySelectorAll('[data-pl]').forEach(b=>b.onclick=()=>{ const [act,id]=b.dataset.pl.split('|'); if(act==='vac') placerVacances(k,id); else { const cur=(p.salles[k]||D.choix[k]).ordre.slice(2); modifierOrdreBrouillon(k,[...cur.filter(x=>x!==id),id],`${ini(id)} placé dernier dans l'ordre de choix du ${fmtLong(d)}.`); } renderGest(); });
 }
 const gLbl=g=>g?gTxtFull(g):'—';
 function modifsHtml(v){
   const L=(v.modifs||[]).map((m,i)=>({...m,i})).reverse();
-  return `<tr class="mods"><td colspan="8" style="padding:4px 8px 10px 24px"><table class="stat" style="max-width:900px"><tbody>${L.map(m=>{ const d=parse(m.k); return `<tr${m.annulee?' style="color:var(--muted);text-decoration:line-through"':''}><td style="white-space:nowrap">${fmtDT(m.t)}${m.par?' · '+ini(m.par):''}</td><td style="white-space:nowrap">${JOURS_C[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}.</td><td>${gLbl(m.avant)} → ${gLbl(m.apres)}</td><td class="n">${m.annulee?'<span class="tag">annulée</span>':`<button class="btn sm" data-gundo="${v.id}|${m.i}">Annuler</button>`}</td></tr>`; }).join('')}</tbody></table></td></tr>`;
+  return `<tr class="mods"><td colspan="8" style="padding:4px 8px 10px 24px"><table class="stat" style="max-width:900px"><tbody>${L.map(m=>{ const d=parse(m.k); return `<tr${m.annulee?' style="color:var(--muted);text-decoration:line-through"':''}><td style="white-space:nowrap">${fmtDT(m.t)}${m.par?' · '+ini(m.par):''}</td><td style="white-space:nowrap">${JOURS_C[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}.</td><td>${m.kind==='ordre'?'Ordre de choix de salle modifié':(m.kind==='vac'?(m.effets&&m.effets[0]||'Vacances'):gLbl(m.avant)+' → '+gLbl(m.apres))}${m.effets&&m.effets.length&&m.kind!=='vac'?`<div class="meta" style="margin:2px 0 0">${m.effets.join(' ')}</div>`:''}</td><td class="n">${m.annulee?'<span class="tag">annulée</span>':`<button class="btn sm" data-gundo="${v.id}|${m.i}">Annuler</button>`}</td></tr>`; }).join('')}</tbody></table></td></tr>`;
 }
 function historiqueHtml(){
   const L=[...(D.generations||[])].sort((a,b)=>a.creeA<b.creeA?1:-1); if(!L.length) return '';
@@ -1999,7 +2089,7 @@ function ouvrirGeneration(id){
   const mondays=semainesDe(g.trim), weeks=(g.weeks&&g.weeks.length)?g.weeks:mondays, ids=actifs().map(m=>m.id);
   const changed=[...(g.touched||[])].filter(k=>JSON.stringify(D.gardes[k]||null)!==JSON.stringify(g.G[k]||null)).sort();
   gen.trim=g.trim; gen.weeks=new Set(weeks); gen.result=null;
-  gen.pending={G, salles:g.salles||{}, touched:[...(g.touched||[])], changed, ctx:{weeks, weekSet:new Set(weeks), mondays, ids, etapes:g.etapes||{fds:true,sem:true,salles:true}}, rapport:g.rapport||{stats:[],trous:[],warn:[],detaches:[]}, cursor:parse(weeks[0]), genId:g.id};
+  gen.pending={G, salles:g.salles||{}, touched:[...(g.touched||[])], changed, ctx:{weeks, weekSet:new Set(weeks), mondays, ids, etapes:g.etapes||{fds:true,sem:true,salles:true}}, rapport:g.rapport||{stats:[],trous:[],warn:[],detaches:[]}, cursor:parse(weeks[0]), genId:g.id, aPlacer:g.aPlacer||{}, vacs:g.vacs||[]};
   renderGest(); toast(g.statut==='publiee'?'Horaire publié ouvert en aperçu':'Brouillon ouvert en aperçu');
 }
 function annulerGeneration(){
