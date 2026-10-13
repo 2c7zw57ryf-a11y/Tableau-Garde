@@ -8,18 +8,20 @@ Langue de l'interface et du code (commentaires, noms) : français québécois. T
 - **Un seul fichier** : `index.html` (HTML + CSS + JS, aucune étape de build). Déployé par GitHub Pages
   à https://2c7zw57ryf-a11y.github.io/Tableau-Garde/ — chaque push sur `main` redéploie en ~1 min.
 - **Données** : Supabase (projet `rwfctaghsmnmdsivycsx`, région Canada). Schéma dans `supabase-schema.sql`.
-  Tables : membres, gardes, choix, absences, feries, verrous, echanges, journal, reglages. RLS activée :
-  lecture = membre actif connecté (courriel dans `membres.courriel`), écriture = `responsable`, échanges par chacun.
+  Tables : membres, gardes, choix, absences, feries, verrous, echanges, journal, reglages, generations. RLS activée :
+  lecture = membre actif connecté (courriel dans `membres.courriel`), écriture = `responsable`, échanges par chacun;
+  `generations` (horaires générés, brouillons et publiés) = responsables seulement. Migrations dans `migrations/`.
 - **Config** dans `index.html`, tout en haut : `window.TG_CONFIG={url, key}`. La clé est la clé PUBLIQUE
   (`sb_publishable_…`). Ne JAMAIS mettre une clé `service_role`/`secret` dans le code ni dans le dépôt.
 - **Deux modes** dans le même fichier : en ligne (TG_CONFIG renseignée → `StoreOnline`, auth par lien courriel)
   et local (TG_CONFIG vide → `StoreLocal`, données de démonstration dans `<script id="data">`, localStorage).
-  Les écrans n'appellent que `Store.*` (`setGarde`, `setChoix`, `saveMembre`, `delMembre`, `setFeries`, `log`,
-  `save`) ; garder cette séparation.
+  Les écrans n'appellent que `Store.*` (`setGarde`, `setChoix`, `saveMembre`, `delMembre`, `setFeries`, `saveGeneration`,
+  `delGeneration`, `log`, `save`) ; garder cette séparation.
 
 ## Structure du code (index.html)
 - Données : `D` (gardes `{jour:{g1|g1j|g1n|g2}}`, choix `{jour:{ordre[],nuit,postGarde[],absents[],hb?}}`,
-  vacances `[{membre,debut,fin,motif?,echange?}]`, feries[], locks{}, echanges[], journal[], reglages, blocs, capacites).
+  vacances `[{membre,debut,fin,motif?,echange?}]`, feries[], locks{}, echanges[], journal[], reglages, blocs, capacites,
+  generations[] `{id,trim,creeA,par,statut,publieeA,publieePar,G,salles,touched,changed,rapport,…}`).
 - Vues : Semaine, Mois, Mes jours, Échanges, Impression ; Gestion (responsables) : Horaire, Vacances, Générateur,
   Membres, Fériés, Journal, Outils.
 - Générateur : `trimestreDe`, `semainesDe`, `compteurs`, `scoreDe`, `genererEssai` (constructions),

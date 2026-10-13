@@ -40,6 +40,12 @@ create table if not exists public.echanges (
 
 create table if not exists public.journal (id bigserial primary key, t timestamptz not null default now(), par text, txt text not null);
 create table if not exists public.reglages (cle text primary key, valeur jsonb not null, maj timestamptz not null default now());
+-- horaires générés conservés (brouillons et publiés), responsables seulement — ajouté le 2026-10-13
+create table if not exists public.generations (
+  id uuid primary key default gen_random_uuid(), trimestre text not null, cree_a timestamptz not null default now(), par text,
+  statut text not null default 'brouillon' check (statut in ('brouillon','publiee','annulee')),
+  publiee_a timestamptz, publiee_par text, note text, data jsonb not null, maj timestamptz not null default now());
+create index if not exists generations_cree_idx on public.generations(cree_a desc);
 
 -- autorisation
 create or replace function public.mon_membre() returns text
@@ -62,6 +68,7 @@ alter table public.verrous enable row level security;
 alter table public.echanges enable row level security;
 alter table public.journal enable row level security;
 alter table public.reglages enable row level security;
+alter table public.generations enable row level security;
 
 do $$ declare t text; begin
   foreach t in array array['membres','gardes','choix','absences','feries','verrous','echanges','journal','reglages'] loop
@@ -70,6 +77,12 @@ do $$ declare t text; begin
     execute format('drop policy if exists ecriture_responsables on public.%I', t);
     execute format('create policy ecriture_responsables on public.%I for all to authenticated using (public.est_responsable()) with check (public.est_responsable())', t);
   end loop; end $$;
+
+-- horaires générés : responsables seulement, en lecture comme en écriture
+drop policy if exists lecture_responsables on public.generations;
+create policy lecture_responsables on public.generations for select to authenticated using (public.est_responsable());
+drop policy if exists ecriture_responsables on public.generations;
+create policy ecriture_responsables on public.generations for all to authenticated using (public.est_responsable()) with check (public.est_responsable());
 
 -- échanges : chaque membre crée ses demandes et peut agir sur celles qui le concernent
 drop policy if exists echanges_creer on public.echanges;
@@ -99,7 +112,7 @@ on conflict (cle) do nothing;
 
 -- temps réel
 do $$ begin
-  begin alter publication supabase_realtime add table public.gardes, public.choix, public.absences, public.echanges, public.membres, public.verrous, public.feries, public.reglages, public.journal;
+  begin alter publication supabase_realtime add table public.gardes, public.choix, public.absences, public.echanges, public.membres, public.verrous, public.feries, public.reglages, public.journal, public.generations;
   exception when others then null; end;
 end $$;
 

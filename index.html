@@ -537,6 +537,8 @@ const StoreLocal = {
   saveMembre(m){ const i=D.membres.findIndex(x=>x.id===m.id); if(i<0) D.membres.push(m); else D.membres[i]=m; rebuildM(); this.save(); },
   delMembre(id){ D.membres=D.membres.filter(x=>x.id!==id); rebuildM(); this.save(); },
   setFeries(list){ D.feries=list; FERIES.clear(); list.forEach(x=>FERIES.add(x)); this.save(); },
+  saveGeneration(g){ D.generations=D.generations||[]; const i=D.generations.findIndex(x=>x.id===g.id); if(i<0) D.generations.unshift(g); else D.generations[i]=g; this.save(); },
+  delGeneration(id){ D.generations=(D.generations||[]).filter(x=>x.id!==id); this.save(); },
 };
 // =====================================================================
 // MODE EN LIGNE (Supabase) — remplace la couche locale quand CONFIG est renseignée
@@ -554,18 +556,18 @@ function rowsToD(r){
   const echanges=r.echanges.map(x=>x.data);
   const journal=r.journal.map(x=>({t:x.t,par:x.par||'—',txt:x.txt}));
   const regl={}; r.reglages.forEach(x=>regl[x.cle]=x.valeur);
-  return {membres:mem,gardes,choix,prov,vacances,feries,locks,echanges,journal,reglages:{delaiEncan:regl.delaiEncan??24,hbDefaut:regl.hbDefaut??1,salles:regl.salles??null},blocs:regl.blocs||[7,12],capacites:regl.capacites||{},lastGen:regl.lastGen||null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}};
+  return {membres:mem,gardes,choix,prov,vacances,feries,locks,echanges,journal,reglages:{delaiEncan:regl.delaiEncan??24,hbDefaut:regl.hbDefaut??1,salles:regl.salles??null},blocs:regl.blocs||[7,12],capacites:regl.capacites||{},generations:(r.generations||[]).map(x=>({id:x.id,trim:x.trimestre,creeA:x.cree_a,par:x.par||'',statut:x.statut,publieeA:x.publiee_a||null,publieePar:x.publiee_par||null,note:x.note||'',...(x.data||{})})),lastGen:regl.lastGen||null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}};
 }
 function snapFrom(d){ SNAP={vac:{},ech:{},locks:{...d.locks},regl:{blocs:JSON.stringify(d.blocs),hbDefaut:JSON.stringify(d.reglages.hbDefaut),salles:JSON.stringify(d.reglages.salles??null),delaiEncan:JSON.stringify(d.reglages.delaiEncan),capacites:JSON.stringify(d.capacites),lastGen:JSON.stringify(d.lastGen||null)}};
   d.vacances.forEach(v=>{ v.id=v.id||uuid(); SNAP.vac[v.id]=JSON.stringify(v); }); d.echanges.forEach(e=>SNAP.ech[e.id]=JSON.stringify(e)); }
 async function chargerTout(){
   const q=async (t,sel,ord)=>{ let qq=sb.from(t).select(sel||'*'); if(ord) qq=qq.order(ord.col,{ascending:ord.asc!==false}); if(t==='journal') qq=qq.limit(300); const {data,error}=await qq; if(error) throw error; return data||[]; };
-  const [membres,gardes,choix,absences,feries,verrous,echanges,journal,reglages]=await Promise.all([q('membres'),q('gardes'),q('choix'),q('absences'),q('feries'),q('verrous'),q('echanges'),q('journal','*',{col:'t',asc:false}),q('reglages')]);
-  return rowsToD({membres,gardes,choix,absences,feries,verrous,echanges,journal,reglages});
+  const [membres,gardes,choix,absences,feries,verrous,echanges,journal,reglages,generations]=await Promise.all([q('membres'),q('gardes'),q('choix'),q('absences'),q('feries'),q('verrous'),q('echanges'),q('journal','*',{col:'t',asc:false}),q('reglages'),q('generations','*',{col:'cree_a',asc:false}).catch(()=>[])]);
+  return rowsToD({membres,gardes,choix,absences,feries,verrous,echanges,journal,reglages,generations});
 }
 function appliquerD(nd){ for(const k of Object.keys(D)) delete D[k]; Object.assign(D,nd); rebuildM(); FERIES.clear(); D.feries.forEach(x=>FERIES.add(x)); snapFrom(D); if(typeof rebuildWho==='function') rebuildWho(); }
 const StoreOnline = {
-  load(){ return {membres:[],gardes:{},choix:{},prov:{},vacances:[],feries:[],locks:{},echanges:[],journal:[],reglages:{delaiEncan:24,hbDefaut:1,salles:null},blocs:[7,12],capacites:{},lastGen:null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}}; },
+  load(){ return {membres:[],gardes:{},choix:{},prov:{},vacances:[],feries:[],locks:{},echanges:[],journal:[],reglages:{delaiEncan:24,hbDefaut:1,salles:null},blocs:[7,12],capacites:{},generations:[],lastGen:null,demo:false,periode:{debut:'2026-08-31',fin:'2027-12-26'}}; },
   reset(){ toast('Indisponible en ligne'); },
   async save(){ if(!sb) return;
     try{
@@ -600,6 +602,10 @@ const StoreOnline = {
   saveMembre(m){ const i=D.membres.findIndex(x=>x.id===m.id); if(i<0) D.membres.push(m); else D.membres[i]=m; rebuildM(); if(!sb) return;
     sb.from('membres').upsert({id:m.id,nom:m.nom,ini:m.ini,courriel:m.courriel||null,mode:m.mode,mode_fds:m.modeFds,ven_sep:!!m.venSep,actif:m.actif!==false,responsable:!!m.responsable,ordre:m.ordre||99,maj:new Date().toISOString()}).then(({error})=>{ if(error) erreur(error,'membre'); }); },
   delMembre(id){ D.membres=D.membres.filter(x=>x.id!==id); rebuildM(); if(sb) sb.from('membres').delete().eq('id',id).then(({error})=>{ if(error) erreur(error,'membre'); }); },
+  saveGeneration(g){ D.generations=D.generations||[]; const i=D.generations.findIndex(x=>x.id===g.id); if(i<0) D.generations.unshift(g); else D.generations[i]=g; if(!sb) return;
+    const {id,trim,creeA,par,statut,publieeA,publieePar,note,...data}=g;
+    sb.from('generations').upsert({id,trimestre:trim,cree_a:creeA,par:par||null,statut,publiee_a:publieeA||null,publiee_par:publieePar||null,note:note||null,data,maj:new Date().toISOString()}).then(({error})=>{ if(error) erreur(error,'horaire généré'); }); },
+  delGeneration(id){ D.generations=(D.generations||[]).filter(x=>x.id!==id); if(sb) sb.from('generations').delete().eq('id',id).then(({error})=>{ if(error) erreur(error,'horaire généré'); }); },
   setFeries(list){ const old=new Set(D.feries); D.feries=list; FERIES.clear(); list.forEach(x=>FERIES.add(x)); if(!sb) return;
     const add=list.filter(x=>!old.has(x)), del=[...old].filter(x=>!list.includes(x));
     if(add.length) sb.from('feries').upsert(add.map(j=>({jour:j}))).then(({error})=>{ if(error) erreur(error,'fériés'); });
@@ -1422,7 +1428,7 @@ swAdmin.onchange=()=>{ admin=swAdmin.checked; try{localStorage.setItem('tg.admin
 // =====================================================================
 // GÉNÉRATEUR D'HORAIRE (responsables) — FDS → semaine → salles
 // =====================================================================
-D.locks = D.locks||{}; D.lastGen = D.lastGen||null;
+D.locks = D.locks||{}; D.lastGen = D.lastGen||null; D.generations = D.generations||[];
 
 // ---- calendrier des trimestres
 function trimestreDe(dAny){
@@ -1708,7 +1714,8 @@ function gestGenerateur(box){
       <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="gRun" ${gen.running||isFetes?'disabled':''}>${gen.pending?'Regénérer':'Générer'}</button><button class="btn" id="gRunFull" ${gen.running||isFetes?'disabled':''} title="Utilise les 60 secondes au complet, sans arrêt anticipé">Générer 60 s complètes</button><button class="btn" id="gStop" ${gen.running?'':'disabled'}>Arrêter et garder le meilleur</button>${D.lastGen?`<button class="btn danger" id="gUndo">Annuler la dernière génération</button>`:''}</div>
       <div id="gProg"></div>
     </div></div>
-    <div id="gRapport">${gen.pending?apercuHtml(gen.pending):(gen.result?rapportHtml(gen.result):'')}</div></div>`;
+    <div id="gRapport">${gen.pending?apercuHtml(gen.pending):(gen.result?rapportHtml(gen.result):'')}</div>
+    <div id="gHist">${historiqueHtml()}</div></div>`;
   box.innerHTML=h;
   const nav=dir=>{ const all=['hiver','ete','automne','fetes']; let [t,y]=gen.trim.split('-'); y=+y; let i=all.indexOf(t)+dir; if(i<0){i=3;y--;} if(i>3){i=0;y++;} gen.trim=all[i]+'-'+y; gen.weeks=new Set(semainesDe(gen.trim).filter(mk=>addDays(parse(mk),6)>genCut())); gen.result=null; renderGest(); };
   document.getElementById('gtPrev').onclick=()=>nav(-1); document.getElementById('gtNext').onclick=()=>nav(1);
@@ -1725,6 +1732,8 @@ function gestGenerateur(box){
   const u=document.getElementById('gUndo'); if(u) u.onclick=annulerGeneration;
   const ap=document.getElementById('gApply'); if(ap) ap.onclick=()=>confirmBox(`Appliquer cet horaire au tableau (${gen.pending.changed.length} jour(s) de garde, ${gen.pending.rapport.nC} ordre(s) de salle)? Il sera visible par tout le groupe.`, appliquerGeneration);
   const di=document.getElementById('gDiscard'); if(di) di.onclick=()=>{ gen.pending=null; renderGest(); };
+  box.querySelectorAll('[data-gopen]').forEach(b=>b.onclick=()=>ouvrirGeneration(b.dataset.gopen));
+  box.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>confirmBox('Supprimer cet horaire généré de la mémoire? Le tableau de garde n\'est pas touché.',()=>{ if(gen.pending&&gen.pending.genId===b.dataset.gdel) gen.pending=null; Store.delGeneration(b.dataset.gdel); Store.log('Horaire généré supprimé de la mémoire'); renderGest(); }));
   const gd=document.getElementById('gDet'); if(gd) gd.onclick=()=>{ gen.details=!gen.details; renderGest(); };
   const gf=document.getElementById('gFil'); if(gf) gf.onchange=()=>{ gen.filtre=gf.value; renderGest(); };
   box.querySelectorAll('.stat th[data-sort]').forEach(th=>th.onclick=()=>{ const k=th.dataset.sort; gen.sort = gen.sort.k===k ? {k, d:-gen.sort.d} : {k, d:['g1','j','n','g2','sg1','sg2','f24','fj','fn','fg2','fch','fds','ven','fer'].includes(k)?-1:1}; renderGest(); });
@@ -1779,6 +1788,11 @@ function preparerGeneration(best, ctx, info){
   const rapport={...info, trim:gen.trim, nG:changed.length, nC:Object.keys(salles).length, trous:best.trous, detaches:best.detaches, score:Math.round(best.score), stats:ctx.ids.map(id=>({ini:ini(id), g1:c[id].g1+ctx.soldes[id].g1, j:c[id].j, n:c[id].n, g2:c[id].g2+ctx.soldes[id].g2, fds:c[id].fds, f24:c[id].f24, fj:c[id].fj, fn:c[id].fn, fg2:c[id].fg2, fch:c[id].fch, ven:c[id].ven, fer:c[id].fer, dow:c[id].dow.slice(1,6)})), warn:[]};
   ctx.ids.forEach(id=>{ for(const mo in c[id].fdsMois) if(c[id].fdsMois[mo]>1){ const [y,m]=mo.split('-'); rapport.warn.push(`${ini(id)} : ${c[id].fdsMois[mo]} FDS en ${MOIS[+m]} ${y}`); } });
   gen.pending={G, salles, touched:[...touched], changed, ctx, rapport, cursor:parse(ctx.weeks[0])};
+  // brouillon conservé en mémoire (table generations), visible des responsables seulement
+  const Gt={}; touched.forEach(k=>{ Gt[k]=G[k]||null; });
+  const rec={id:uuid(), trim:gen.trim, creeA:now().toISOString(), par:me||'', statut:'brouillon', publieeA:null, publieePar:null, note:'', seed:info.seed, score:rapport.score, trous:best.trous.length, nG:changed.length, nC:Object.keys(salles).length, weeks:[...ctx.weeks], etapes:{...ctx.etapes}, G:Gt, salles, touched:[...touched], changed, rapport};
+  Store.saveGeneration(rec); gen.pending.genId=rec.id;
+  Store.log(`Horaire généré (brouillon) : ${trimestreDe(parse(ctx.mondays[0])).nom}, score ${rapport.score}, graine ${info.seed}`);
   gen.result=null; toast('Horaire généré : vérifiez l\'aperçu'); renderGest();
 }
 function appliquerGeneration(){
@@ -1788,24 +1802,47 @@ function appliquerGeneration(){
   p.touched.forEach(k=>{ const a=JSON.stringify(D.gardes[k]||null), b=JSON.stringify(p.G[k]||null); if(a!==b){ Store.setGarde(k,p.G[k]||null); nG++; if(!p.G[k]) Store.setChoix(k,null); } });
   if(p.ctx.etapes.salles){ for(const k in p.salles){ if(JSON.stringify(D.choix[k])!==JSON.stringify(p.salles[k])){ Store.setChoix(k,p.salles[k]); nC++; } } }
   else { p.touched.forEach(k=>{ const c=D.choix[k], g=p.G[k]; if(!c||!g) return; const top=[g.g1||g.g1j,g.g2]; const rest=c.ordre.filter(id=>!top.includes(id)&&id!==g.g1n); Store.setChoix(k,{...c,ordre:[...top,...rest],nuit:g.g1n||null}); }); }
-  D.lastGen={t:now().toISOString(), avant, rapport:p.rapport, journalLen:(D.journal||[]).length}; Store.save();
+  D.lastGen={t:now().toISOString(), avant, rapport:p.rapport, journalLen:(D.journal||[]).length, genId:p.genId||null}; Store.save();
+  if(p.genId){ const rec=(D.generations||[]).find(x=>x.id===p.genId); if(rec){ rec.statut='publiee'; rec.publieeA=now().toISOString(); rec.publieePar=me||''; Store.saveGeneration(rec); } }
   Store.log(`Génération ${trimestreDe(parse(p.ctx.mondays[0])).nom} appliquée : ${nG} jour(s) de garde, ${nC} ordre(s) de salle, score ${p.rapport.score}, graine ${p.rapport.seed}, ${p.rapport.essais} essais`);
   gen.result=p.rapport; gen.pending=null; purgerCaduques(); toast('Horaire appliqué au tableau'); renderGest();
 }
 function apercuHtml(p){
   const mon=monday(p.cursor); const weeks=p.ctx.weeks; const i=weeks.indexOf(key(mon));
   const data={gardes:p.G, choix:{...D.choix, ...p.salles}};
-  let h=`<section class="rap"><h2>Aperçu de l'horaire généré <small>${p.changed.length} jour(s) de garde modifié(s) · rien n'est encore appliqué</small></h2>
-    <div class="actions" style="justify-content:flex-start;margin-bottom:10px"><button class="btn primary" id="gApply">Appliquer au tableau</button><button class="btn" id="gDiscard">Rejeter</button></div>
+  const rec=p.genId&&(D.generations||[]).find(x=>x.id===p.genId);
+  let h=`<section class="rap"><h2>Aperçu de l'horaire généré <small>${p.changed.length} jour(s) de garde modifié(s) · ${rec?`généré le ${fmtDT(rec.creeA)} · ${rec.statut==='publiee'?'déjà publié le '+fmtDT(rec.publieeA):'brouillon conservé en mémoire, pas encore publié'}`:'rien n\'est encore appliqué'}</small></h2>
+    <div class="actions" style="justify-content:flex-start;margin-bottom:10px"><button class="btn primary" id="gApply">${rec&&rec.statut==='publiee'?'Appliquer de nouveau':'Publier au tableau'}</button><button class="btn" id="gDiscard">Fermer l'aperçu</button></div>
     <div class="gnav"><button id="gaPrev" ${i<=0?'disabled':''}>‹</button><div class="title">${gTitle(mon)}</div><button id="gaNext" ${i>=weeks.length-1?'disabled':''}>›</button><span class="meta">semaine ${i+1} de ${weeks.length} · les jours modifiés sont encadrés en orange</span></div>
     <div class="week nome">`;
   for(let d=0; d<7; d++){ const k=key(addDays(mon,d)); const chg=p.changed.includes(k); h+=`<div class="${chg?'chg-day':''}">${dayCard(k,{data})}</div>`; }
   return h+`</div>${rapportHtml(p.rapport)}</section>`;
 }
+// --- horaires générés conservés en mémoire (brouillons et publiés)
+const fmtDT=t=>{ if(!t) return ''; const d=new Date(t); return `${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}. ${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+function historiqueHtml(){
+  const L=[...(D.generations||[])].sort((a,b)=>a.creeA<b.creeA?1:-1); if(!L.length) return '';
+  const nomTrim=tr=>{ try{ return trimestreDe(parse(semainesDe(tr)[0])).nom; }catch(e){ return tr; } };
+  const st=g=>g.statut==='publiee'?`<span class="tag t24">Publié le ${fmtDT(g.publieeA)}${g.publieePar?' par '+ini(g.publieePar):''}</span>`:(g.statut==='annulee'?`<span class="tag resp">Publié puis annulé</span>`:`<span class="tag">Brouillon</span>`);
+  return `<section class="rap"><h2>Horaires générés <small>conservés en mémoire pour les responsables; un brouillon n'est pas visible des membres tant qu'il n'est pas publié</small></h2>
+    <div class="tblwrap"><table class="stat"><thead><tr><th>Généré le</th><th>Trimestre</th><th class="n">Semaines</th><th class="n">Jours</th><th class="n">Score</th><th class="n">Trous</th><th>Statut</th><th></th></tr></thead><tbody>
+    ${L.map(g=>`<tr${gen.pending&&gen.pending.genId===g.id?' style="font-weight:700"':''}><td>${fmtDT(g.creeA)}${g.par?' <span class="meta">'+ini(g.par)+'</span>':''}</td><td>${nomTrim(g.trim)}</td><td class="n">${(g.weeks||[]).length}</td><td class="n">${g.nG||0}</td><td class="n">${g.score}</td><td class="n">${g.trous||0}</td><td>${st(g)}</td><td style="white-space:nowrap"><button class="btn sm" data-gopen="${g.id}">Ouvrir</button> <button class="btn sm" data-gdel="${g.id}">Supprimer</button></td></tr>`).join('')}
+    </tbody></table></div></section>`;
+}
+function ouvrirGeneration(id){
+  const g=(D.generations||[]).find(x=>x.id===id); if(!g) return;
+  const G={}; for(const k in D.gardes) G[k]=JSON.parse(JSON.stringify(D.gardes[k])); for(const k in (g.G||{})){ if(g.G[k]) G[k]=g.G[k]; else delete G[k]; }
+  const mondays=semainesDe(g.trim), weeks=g.weeks||mondays, ids=actifs().map(m=>m.id);
+  const changed=[...(g.touched||[])].filter(k=>JSON.stringify(D.gardes[k]||null)!==JSON.stringify(g.G[k]||null)).sort();
+  gen.trim=g.trim; gen.weeks=new Set(weeks); gen.result=null;
+  gen.pending={G, salles:g.salles||{}, touched:[...(g.touched||[])], changed, ctx:{weeks, weekSet:new Set(weeks), mondays, ids, etapes:g.etapes||{fds:true,sem:true,salles:true}}, rapport:g.rapport||{stats:[],trous:[],warn:[],detaches:[]}, cursor:parse(weeks[0]), genId:g.id};
+  renderGest(); toast(g.statut==='publiee'?'Horaire publié ouvert en aperçu':'Brouillon ouvert en aperçu');
+}
 function annulerGeneration(){
   const lg=D.lastGen; if(!lg) return;
   const modifsDepuis=(D.journal||[]).length - lg.journalLen - 1;
   confirmBox(`Restaurer le tableau tel qu'il était avant la dernière génération?${modifsDepuis>0?`<br><br><b>Attention :</b> ${modifsDepuis} modification(s) ont été faites depuis; elles seront perdues.`:''}`,()=>{
+    if(lg.genId){ const rec=(D.generations||[]).find(x=>x.id===lg.genId); if(rec){ rec.statut='annulee'; Store.saveGeneration(rec); } }
     D.gardes=lg.avant.gardes; D.choix=lg.avant.choix; D.lastGen=null; Store.save(); Store.log('Dernière génération annulée'); gen.result=null; toast('Génération annulée'); renderGest(); });
 }
 // --- tableau d'équité du rapport : 6 colonnes par défaut, détails repliables, écart à la moyenne en couleur
