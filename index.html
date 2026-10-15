@@ -666,10 +666,18 @@ async function bootOnline(){
   ecranConnexion('', 'hide');
   appliquerD(nd); membreMoi=moi; me=moi.id; admin=!!moi.responsable;
   // interface : identité fixée, plus de sélecteur ni d'interrupteur
-  const whoBox=document.querySelector('.who'); if(whoBox) whoBox.innerHTML=`<span class="moi">${moi.ini} <small>${moi.nom}</small></span><button class="btn sm" id="btnOut" title="Se déconnecter">Quitter</button>`;
-  const sw=document.querySelector('.sw'); if(sw) sw.remove();
+  const whoBox=document.querySelector('.who'); if(whoBox) whoBox.innerHTML=`<span class="moi">${moi.ini} <small>${moi.nom}</small></span>${moi.responsable?`<select id="voirComme" title="Mode test : voir le site comme un autre membre"><option value="">Voir comme…</option>${[...nd.membres].filter(m=>m.actif&&m.id!==moi.id).sort((a,b)=>a.nom.localeCompare(b.nom,'fr')).map(m=>`<option value="${m.id}">${m.nom} (${m.ini})</option>`).join('')}</select><label class="sw" title="Mode test : décochez pour voir le site comme un membre sans droits de gestion"><input type="checkbox" id="swResp" checked> Responsable</label>`:''}<button class="btn sm" id="btnOut" title="Se déconnecter">Quitter</button>`;
+  const sw=document.querySelector('.top > .sw'); if(sw) sw.remove();
   document.getElementById('btnOut').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
   const demo=document.getElementById('demo'); if(demo) demo.remove();
+  if(moi.responsable){ // mode test : identité et droits simulés dans l'interface seulement (les écritures restent celles du compte connecté)
+    const banner=document.createElement('div'); banner.className='demo'; banner.id='testBanner'; banner.hidden=true; document.querySelector('.top').insertAdjacentElement('afterend',banner);
+    const majTest=()=>{ const autre=me!==moi.id, sansDroits=!admin; banner.hidden=!(autre||sansDroits);
+      banner.innerHTML=`Mode test : vous voyez le site comme <b>${autre?nom(me)+' ('+ini(me)+')':moi.nom}</b>${sansDroits?', sans droits de gestion':''}. Vos modifications sont enregistrées sous le compte de ${moi.ini}. <button class="btn sm" id="testFin">Revenir à moi</button>`;
+      const f=document.getElementById('testFin'); if(f) f.onclick=()=>{ me=moi.id; admin=true; document.getElementById('voirComme').value=''; document.getElementById('swResp').checked=true; majTest(); render(); }; };
+    document.getElementById('voirComme').onchange=e=>{ me=e.target.value||moi.id; majTest(); render(); };
+    document.getElementById('swResp').onchange=e=>{ admin=e.target.checked; if(view==='gest'&&!admin) view='week'; majTest(); render(); };
+  }
   if(view==='gest' && !admin) view='week'; render();
   // temps réel : recharger (avec délai) quand d'autres modifient
   let timer=null; const rechg=()=>{ clearTimeout(timer); timer=setTimeout(async()=>{ if(gen.running) return; try{ const d2=await chargerTout(); const keep={lastGen:D.lastGen}; appliquerD(d2); if(!D.lastGen) D.lastGen=keep.lastGen; render(); }catch(e){ console.error(e); } }, 800); };
@@ -1761,7 +1769,7 @@ function gestGenerateur(box){
         <label class="chk"><input type="checkbox" id="eSem" ${gen.etapes.sem?'checked':''}> Semaine (lun-jeu et vendredis détachés)</label>
         <label class="chk"><input type="checkbox" id="eSal" ${gen.etapes.salles?'checked':''}> Ordre de choix de salle</label></div>
       <div class="step"><label>Salles d'opération ouvertes</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="number" id="gSalles" min="1" max="40" step="1" value="${sallesDe()||''}" placeholder="non réglé" style="width:110px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:var(--r-sm);padding:7px 8px;font-size:15px"><span class="meta" style="margin:0">${sallesDe()?`Positions 1 à ${sallesDe()} avec salle; au-delà, hors bloc (HB) automatiquement.`:`Non réglé : ${D.reglages.hbDefaut} HB par défaut (Outils).`}</span></div></div>
-      <div class="step"><label class="chk"><input type="checkbox" id="ePasse" ${gen.passe?'checked':''}> Inclure les jours passés (test de la maquette seulement)</label></div>
+      <div class="step"><label class="chk"><input type="checkbox" id="ePasse" ${gen.passe?'checked':''}> Inclure les semaines passées (regénère aussi le passé; pour les tests)</label></div>
       <div class="step"><label>Graine (facultatif, pour rejouer une génération)</label><input type="text" id="gSeed" value="${gen.seed}" placeholder="aléatoire" style="max-width:160px"></div>
       <div class="meta">Le passé, les fériés, les semaines non cochées et les jours verrouillés (🔒) ne sont jamais modifiés. Budget : 60 s maximum, arrêt automatique après 30 essais sans amélioration.</div>
       <div class="actions" style="justify-content:flex-start"><button class="btn primary" id="gRun" ${gen.running||isFetes?'disabled':''}>${gen.pending?'Regénérer':'Générer'}</button><button class="btn" id="gRunFull" ${gen.running||isFetes?'disabled':''} title="Utilise les 60 secondes au complet, sans arrêt anticipé">Générer 60 s complètes</button><button class="btn" id="gStop" ${gen.running?'':'disabled'}>Arrêter et garder le meilleur</button>${D.lastGen?`<button class="btn danger" id="gUndo">Annuler la dernière génération</button>`:''}</div>

@@ -42,6 +42,10 @@ Application web pour le groupe d'anesthésiologie (16 à 25 membres) : horaire d
 - Statistiques par trimestre (G1/G2 + écarts, FDS, L→V) + table des blocs de choix de salle.
 - Grille de vacances trimestrielle, tour de choix, choix de salle par blocs, équipe (champ nom agrandi, modes, ven. sép.).
 
+## Mode test (2026-10-15)
+- Un responsable connecté peut, dans la barre du haut, « Voir comme… » un autre membre et décocher « Responsable » pour vérifier l'interface d'un membre sans droits. Un bandeau le rappelle; les écritures restent faites sous le compte connecté (droits Supabase inchangés). « Revenir à moi » rétablit l'identité.
+- Générateur : « Inclure les semaines passées » permet de regénérer aussi le passé, pour les tests.
+
 ## À valider / suite possible
 - Règles de garde des 2 semaines des Fêtes (existent, à documenter).
 - Fériés de semaine : comptés comme jours réguliers pour les blocs; lundi férié rattaché ou non à la FDS?
