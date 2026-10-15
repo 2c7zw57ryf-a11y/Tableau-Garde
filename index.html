@@ -1209,8 +1209,11 @@ function bindGNav(){ document.getElementById('gPrev').onclick=()=>{gCursor=addDa
 function nightBefore(k,GG=D.gardes){ const g=GG[key(addDays(parse(k),-1))]; return g ? [g.g1,g.g1n].filter(Boolean) : []; }
 
 // validations d'un jour de garde (avertissements, pas des blocages)
+// rôle conforme au mode ? semaine = mode, sam-dim = modeFds, vendredi = l'un ou l'autre
+function roleConforme(k,r,id){ if(!M[id]||r==='g2') return true; const dow=parse(k).getDay(); const modes=(dow===6||dow===0)?[M[id].modeFds]:(dow===5?[M[id].mode,M[id].modeFds]:[M[id].mode]); return r==='g1'?modes.includes('24h'):modes.includes('12h'); }
 function checkGarde(k,g,GG=D.gardes){
   const w=[], ids=[g.g1,g.g1j,g.g1n,g.g2].filter(Boolean);
+  for(const r of ['g1','g1j','g1n']){ const id=g[r]; if(id&&M[id]&&!roleConforme(k,r,id)) w.push(ini(id)+(r==='g1'?' est en mode 12 h : garde de 24 h inhabituelle.':' est en mode 24 h : demi-garde (jour ou nuit seule) inhabituelle.')); }
   if(new Set(ids).size!==ids.length) w.push('Une même personne occupe deux rôles.');
   ids.forEach(id=>{ if(enVac(id,k)) w.push(ini(id)+' est en vacances ce jour-là.'); });
   nightBefore(k,GG).forEach(id=>{ if(ids.includes(id)) w.push(ini(id)+' est en post-garde (nuit la veille).'); });
@@ -1843,7 +1846,9 @@ function preparerGeneration(best, ctx, info){
   touched.forEach(k=>{ if(!(k in G)) G[k]=null; });
   const changed=[...touched].filter(k=>JSON.stringify(D.gardes[k]||null)!==JSON.stringify(G[k]||null)).sort();
   const c=compteurs(G, ctx.mondays, ctx.ids);
-  const rapport={...info, trim:gen.trim, nG:changed.length, nC:Object.keys(salles).length, trous:best.trous, detaches:best.detaches, score:Math.round(best.score), stats:ctx.ids.map(id=>({ini:ini(id), g1:c[id].g1+ctx.soldes[id].g1, j:c[id].j, n:c[id].n, g2:c[id].g2+ctx.soldes[id].g2, fds:c[id].fds, f24:c[id].f24, fj:c[id].fj, fn:c[id].fn, fg1:Math.round((fdsG1(c[id])+ctx.soldes[id].fg1)*10)/10, fg2:c[id].fg2+ctx.soldes[id].fg2, fch:c[id].fch, ven:c[id].ven, fer:c[id].fer, dow:c[id].dow.slice(1,6), bg1:ctx.soldes[id].g1, bg2:ctx.soldes[id].g2, bf1:ctx.soldes[id].fg1, bf2:ctx.soldes[id].fg2})), warn:[]};
+  const incoh=[]; const inW=new Set(ctx.mondays); const genSet=new Set(best.genDays); for(const k in G){ const g=G[k]; if(!g||!inW.has(key(monday(parse(k))))) continue; for(const r of ['g1','g1j','g1n']){ const id=g[r]; if(id&&M[id]&&!roleConforme(k,r,id)) incoh.push({k,r,id,gen:genSet.has(k)}); } }
+  incoh.sort((a,b)=>a.k<b.k?-1:1);
+  const rapport={...info, incoh, trim:gen.trim, nG:changed.length, nC:Object.keys(salles).length, trous:best.trous, detaches:best.detaches, score:Math.round(best.score), stats:ctx.ids.map(id=>({ini:ini(id), g1:c[id].g1+ctx.soldes[id].g1, j:c[id].j, n:c[id].n, g2:c[id].g2+ctx.soldes[id].g2, fds:c[id].fds, f24:c[id].f24, fj:c[id].fj, fn:c[id].fn, fg1:Math.round((fdsG1(c[id])+ctx.soldes[id].fg1)*10)/10, fg2:c[id].fg2+ctx.soldes[id].fg2, fch:c[id].fch, ven:c[id].ven, fer:c[id].fer, dow:c[id].dow.slice(1,6), bg1:ctx.soldes[id].g1, bg2:ctx.soldes[id].g2, bf1:ctx.soldes[id].fg1, bf2:ctx.soldes[id].fg2})), warn:[]};
   ctx.ids.forEach(id=>{ for(const mo in c[id].fdsMois) if(c[id].fdsMois[mo]>1){ const [y,m]=mo.split('-'); rapport.warn.push(`${ini(id)} : ${c[id].fdsMois[mo]} FDS en ${MOIS[+m]} ${y}`); } });
   gen.pending={G, salles, touched:[...touched], changed, ctx, rapport, cursor:parse(ctx.weeks[0])};
   // brouillon conservé en mémoire (table generations), visible des responsables seulement
@@ -2146,6 +2151,7 @@ function rapportHtml(r){
   return `<section class="rap"><h2>Rapport de génération <small>${r.trim} · ${r.nG} jours de garde, ${r.nC} ordres de salle · score ${r.score} · ${r.essais} constructions puis ${r.pas||0} mouvements de recuit en ${r.duree} s (meilleur : ${r.bestStep?'mouvement '+r.bestStep:'construction '+r.bestAt}; arrêt : ${r.arret}) · graine ${r.seed}</small></h2>
     ${r.trous.length?`<div class="err">${r.trous.length} trou(s) : ${r.trous.join(' · ')}</div>`:''}
     ${r.warn.length?`<div class="warn">${r.warn.join('<br>')}</div>`:''}
+    ${r.incoh&&r.incoh.length?`<div class="warn"><b>Rôles non conformes au mode du membre (${r.incoh.length})</b> — ils comptent dans l'équité ci-dessous : ${r.incoh.map(x=>{ const d=parse(x.k); return `${JOURS_C[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}. : ${ini(x.id)} en ${({g1:'G1 24 h',g1j:'G1 J',g1n:'G1 N'})[x.r]}${x.gen?' (généré)':' (déjà dans le tableau, non touché)'}`; }).join(' · ')}</div>`:''}
     ${r.detaches.length?`<div class="meta">Vendredis détachés (attribués comme jours de semaine) : ${r.detaches.map(k=>{const d=parse(k);return d.getDate()+' '+MOIS[d.getMonth()].slice(0,4)+'.';}).join(', ')}</div>`:''}
     ${statTableHtml(r)}
     </section>`;
